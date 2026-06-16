@@ -180,65 +180,135 @@ def html_to_text(html):
 def parse_articles(html_bodies):
     """
     Parse artikel dari HTML email Talkwalker.
+    Strategi: cari baris tanggal/sumber (format Talkwalker), lalu scan mundur
+    untuk menemukan judul dan snippet.
+    Tidak menggunakan filter keyword karena Talkwalker sudah memfilter untuk Bank Mandiri.
     Return list of dict: {title, snippet, date, source, media_type}
     """
     articles = []
+
+    # Format Talkwalker: "15/06/26 05:34 | Indonesia | katadata.co.id"
+    # atau sumber di baris berikutnya: "15/06/26 05:34 | Indonesia |"
+    date_pattern = re.compile(
+        r"^(\d{2}/\d{2}/\d{2})\s+\d{2}:\d{2}\s*\|\s*([\w][\w\s]*)\|\s*(.*)$"
+    )
+    # Fallback: format tanpa jam "DD/MM/YY | Country | source"
+    date_pattern_nohour = re.compile(
+        r"^(\d{2}/\d{2}/\d{2,4})\s*\|\s*([\w][\w\s]*)\|\s*(.*)$"
+    )
+    # Baris noise yang harus diabaikan saat scan mundur
+    NOISE = {
+        "Tweet", "Show less", "Tell a Friend", "liking", "following",
+        "News", "Blogs", "Twitter", "new results", "Delete Alert",
+        "Manage Alerts", "Create Alert", "Unsubscribe", "View in browser",
+    }
+    NOISE_RE = re.compile(r"^\d+\s+new results?$", re.IGNORECASE)
+
     for html in html_bodies:
         text = html_to_text(html)
-        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        # Collapse tab/spasi ganda tapi jaga newline
+        text = re.sub(r"[ \t]{2,}", " ", text)
 
-        # Deteksi media_type dari header email
+        all_lines = text.splitlines()
+        lines = [l.strip() for l in all_lines]  # semua baris (termasuk kosong)
+
+        # Deteksi media_type dari 40 baris pertama yang tidak kosong
         media_type = "News"
-        for line in lines[:30]:
-            if "Blogs" in line:
+        non_empty_head = [l for l in lines[:60] if l][:40]
+        for line in non_empty_head:
+            ll = line.lower()
+            if "blogs" in ll:
                 media_type = "Blog"
                 break
-            elif "Twitter" in line:
+            elif "twitter" in ll:
                 media_type = "Twitter"
                 break
 
-        # Scan baris untuk pola: judul → snippet → tanggal|negara|sumber
-        date_pattern = re.compile(
-            r"(\d{2}/\d{2}/\d{2,4})\s*\|\s*\w+\s*\|\s*(.+)"
-        )
-        i = 0
-        while i < len(lines):
-            # Cek apakah ada keyword Bank Mandiri / BMRI di baris ini
-            if any(kw.lower() in lines[i].lower() for kw in MONITOR_KEYWORDS):
-                title   = lines[i]
-                snippet = ""
-                source  = ""
-                date    = ""
+        # Indeks baris tidak-kosong untuk navigasi
+        nonempty_lines = [(i, l) for i, l in enumerate(lines) if l]
 
-                # Cari snippet dan tanggal di baris berikutnya
-                j = i + 1
-                while j < min(i + 8, len(lines)):
-                    m = date_pattern.match(lines[j])
-                    if m:
-                        date   = m.group(1)
-                        source = m.group(2).strip()
-                        break
-                    elif not snippet and len(lines[j]) > 20:
-                        snippet = lines[j]
-                    j += 1
+        for idx, (line_idx, line) in enumerate(nonempty_lines):
+            # Coba cocokkan pola tanggal
+            m = date_pattern.match(line) or date_pattern_nohour.match(line)
+            if not m:
+                continue
 
-                if title and source:
-                    articles.append({
-                        "title"      : title,
-                        "snippet"    : snippet,
-                        "date"       : date,
-                        "source"     : source,
-                        "media_type" : media_type,
-                    })
-                    i = j
+            date = m.group(1)
+            # group(3) = sumber jika ada di baris yang sama
+            inline_source = m.group(3).strip() if m.lastindex >= 3 else ""
+
+            # Jika sumber kosong, cek baris non-kosong berikutnya
+            source = inline_source
+            if not source and idx + 1 < len(nonempty_lines):
+                next_line = nonempty_lines[idx + 1][1]
+                # Validasi: terlihat seperti domain (ada titik, tidak terlalu panjang)
+                if re.match(r"^[\w\-]+\.[\w\.\-]{2,}$", next_line) and len(next_line) < 60:
+                    source = next_line
+
+            if not source:
+                continue
+
+            # Scan mundur untuk menemukan judul dan snippet
+            title   = ""
+            snippet = ""
+            candidates = []  # (baris non-kosong sebelum date line)
+
+            for back_idx in range(idx - 1, max(idx - 20, -1), -1):
+                prev_line = nonempty_lines[back_idx][1]
+
+                # Hentikan jika ketemu baris tanggal lain (artikel sebelumnya)
+                if date_pattern.match(prev_line) or date_pattern_nohour.match(prev_line):
+                    break
+                # Hentikan jika ketemu noise header
+                if prev_line in NOISE or NOISE_RE.match(prev_line):
+                    break
+                # Lewati baris sangat pendek (1-3 karakter) — biasanya artefak HTML
+                if len(prev_line) <= 3:
                     continue
-            i += 1
+
+                candidates.insert(0, prev_line)
+                if len(candidates) >= 5:
+                    break
+
+            # Bersihkan candidates dari noise
+            candidates = [
+                c for c in candidates
+                if c not in NOISE and not NOISE_RE.match(c)
+            ]
+
+            if not candidates:
+                continue
+
+            # Gabungkan kandidat pendek berturut-turut (kata terpotong akibat HTML tag)
+            # Contoh: ["Bank", "Mandiri", "Gelar Program..."] → "Bank Mandiri Gelar Program..."
+            title = candidates[0]
+            rest  = candidates[1:]
+            while len(title.split()) <= 2 and rest:
+                title = title + " " + rest[0]
+                rest  = rest[1:]
+            snippet = " ".join(rest[:2])[:300]
+
+            # Filter judul yang tidak masuk akal
+            if len(title) < 8:
+                continue
+            skip_titles = {"tell a friend", "new results", "delete alert",
+                           "manage alerts", "create alert", "unsubscribe"}
+            if any(s in title.lower() for s in skip_titles):
+                continue
+
+            articles.append({
+                "title"      : title,
+                "snippet"    : snippet,
+                "date"       : date,
+                "source"     : source.strip(),
+                "media_type" : media_type,
+            })
 
     # Deduplikasi berdasarkan judul
     seen   = set()
     unique = []
     for a in articles:
-        key = a["title"][:60]
+        key = a["title"][:60].lower()
         if key not in seen:
             seen.add(key)
             unique.append(a)
