@@ -25,9 +25,13 @@ import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
+from email.mime.base import MIMEBase
+from email import encoders
 from html.parser import HTMLParser
 
 import requests
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -773,27 +777,259 @@ def build_html_email(articles, date_str, chart_path):
     return html
 
 
+def generate_excel_report(articles, date_str):
+    """
+    Buat file Excel laporan media monitoring.
+    Sheet 1: Laporan Harian (negatif → positif, sorted by score)
+    Sheet 2: Daftar Media (semua sumber yang diproses)
+    Return path ke file .xlsx sementara.
+    """
+    from collections import Counter
+
+    wb = openpyxl.Workbook()
+
+    # ── Helper styles ──────────────────────────────────────────────
+    def border():
+        s = Side(style="thin", color="BFBFBF")
+        return Border(left=s, right=s, top=s, bottom=s)
+
+    def hfont(color="FFFFFF", sz=10, bold=True):
+        return Font(name="Arial", bold=bold, color=color, size=sz)
+
+    def cfont(bold=False, sz=10):
+        return Font(name="Arial", bold=bold, size=sz)
+
+    def fill(hex_color):
+        return PatternFill("solid", start_color=hex_color)
+
+    def center(wrap=False):
+        return Alignment(horizontal="center", vertical="center", wrap_text=wrap)
+
+    def left(indent=1, wrap=False):
+        return Alignment(horizontal="left", vertical="center", indent=indent, wrap_text=wrap)
+
+    negatif = sorted([a for a in articles if a.get("sentiment") == "negatif"],
+                     key=lambda x: -x.get("score", 0))
+    positif = sorted([a for a in articles if a.get("sentiment") == "positif"],
+                     key=lambda x: -x.get("score", 0))
+    total   = len(articles)
+    pct_pos = round(len(positif) / total * 100) if total else 0
+
+    # ═══════════════════════════════════════════════════════════════
+    # SHEET 1 — LAPORAN HARIAN
+    # ═══════════════════════════════════════════════════════════════
+    ws = wb.active
+    ws.title = "Laporan Harian"
+    ws.column_dimensions["A"].width = 7
+    ws.column_dimensions["B"].width = 55
+    ws.column_dimensions["C"].width = 14
+    ws.column_dimensions["D"].width = 9
+    ws.column_dimensions["E"].width = 38
+
+    # Title
+    ws.merge_cells("A1:E1")
+    ws["A1"] = f"MEDIA MONITORING BANK MANDIRI — {date_str}"
+    ws["A1"].font = hfont(sz=13)
+    ws["A1"].fill = fill("1F4E79")
+    ws["A1"].alignment = center()
+    ws.row_dimensions[1].height = 30
+
+    # Sub-title
+    ws.merge_cells("A2:E2")
+    ws["A2"] = f"Total: {total} artikel  |  🔴 Negatif: {len(negatif)}  |  🟢 Positif: {len(positif)}  |  Sentimen Positif: {pct_pos}%"
+    ws["A2"].font = Font(name="Arial", italic=True, size=10, color="444444")
+    ws["A2"].fill = fill("D6E4F0")
+    ws["A2"].alignment = center()
+    ws.row_dimensions[2].height = 20
+
+    row = 4
+
+    for section, data, hdr_color, row_color_odd, row_color_even, label in [
+        ("🔴 BERITA NEGATIF", negatif, "C0392B", "FEF0F0", "FDDDDD", "NEGATIF"),
+        ("🟢 BERITA POSITIF", positif, "27AE60", "F0FBF4", "DCFBE8", "POSITIF"),
+    ]:
+        # Section header
+        ws.merge_cells(f"A{row}:E{row}")
+        ws[f"A{row}"] = f"{section}  —  {len(data)} artikel"
+        ws[f"A{row}"].font = hfont(sz=11)
+        ws[f"A{row}"].fill = fill(hdr_color)
+        ws[f"A{row}"].alignment = left()
+        ws.row_dimensions[row].height = 24
+        row += 1
+
+        # Column headers
+        col_hdrs = ["No", "Judul Artikel", "Sumber Media", "Skor", "Analisis AI"]
+        for c, h in enumerate(col_hdrs, 1):
+            cell = ws.cell(row=row, column=c, value=h)
+            cell.font = hfont(sz=10)
+            cell.fill = fill("2E75B6")
+            cell.alignment = center()
+            cell.border = border()
+        ws.row_dimensions[row].height = 22
+        row += 1
+
+        if not data:
+            ws.merge_cells(f"A{row}:E{row}")
+            ws[f"A{row}"] = "Tidak ada berita dalam kategori ini."
+            ws[f"A{row}"].font = Font(name="Arial", italic=True, size=10, color="888888")
+            ws[f"A{row}"].alignment = center()
+            ws.row_dimensions[row].height = 20
+            row += 2
+            continue
+
+        for i, art in enumerate(data, 1):
+            bg = row_color_odd if i % 2 == 1 else row_color_even
+            vals = [
+                i,
+                art.get("title", ""),
+                art.get("source", ""),
+                art.get("score", ""),
+                art.get("reason", ""),
+            ]
+            aligns = [center(), left(wrap=True), left(), center(), left(wrap=True)]
+            for c, (v, al) in enumerate(zip(vals, aligns), 1):
+                cell = ws.cell(row=row, column=c, value=v)
+                cell.font = cfont(sz=10)
+                cell.fill = fill(bg)
+                cell.alignment = al
+                cell.border = border()
+            ws.row_dimensions[row].height = 32
+            row += 1
+
+        row += 1  # spacer between sections
+
+    # ═══════════════════════════════════════════════════════════════
+    # SHEET 2 — DAFTAR MEDIA
+    # ═══════════════════════════════════════════════════════════════
+    ws2 = wb.create_sheet("Daftar Media")
+    ws2.column_dimensions["A"].width = 7
+    ws2.column_dimensions["B"].width = 42
+    ws2.column_dimensions["C"].width = 14
+    ws2.column_dimensions["D"].width = 14
+    ws2.column_dimensions["E"].width = 26
+
+    ws2.merge_cells("A1:E1")
+    ws2["A1"] = f"DAFTAR MEDIA YANG DIPROSES — {date_str}"
+    ws2["A1"].font = hfont(sz=13)
+    ws2["A1"].fill = fill("1F4E79")
+    ws2["A1"].alignment = center()
+    ws2.row_dimensions[1].height = 30
+
+    # Hitung sumber per media_type dari articles
+    source_by_type = {}
+    for art in articles:
+        mt  = art.get("media_type", "News")
+        src = art.get("source", "")
+        if src:
+            source_by_type.setdefault(mt, Counter())[src] += 1
+
+    row2 = 3
+    no   = 1
+    TYPE_META = [
+        ("News",    "📰", "1F4E79", "D6E4F0"),
+        ("Blog",    "📝", "375623", "E2EFDA"),
+        ("Twitter", "🐦", "1C3557", "DAE3F3"),
+    ]
+
+    for mt, emoji, hdr_hex, row_hex in TYPE_META:
+        counter = source_by_type.get(mt, Counter())
+        if not counter:
+            continue
+
+        # Section header
+        ws2.merge_cells(f"A{row2}:E{row2}")
+        ws2[f"A{row2}"] = f"{emoji} {mt.upper()}  —  {sum(counter.values())} artikel  |  {len(counter)} sumber"
+        ws2[f"A{row2}"].font = hfont(sz=10)
+        ws2[f"A{row2}"].fill = fill(hdr_hex)
+        ws2[f"A{row2}"].alignment = left()
+        ws2.row_dimensions[row2].height = 22
+        row2 += 1
+
+        # Column headers
+        for c, h in enumerate(["No", "Nama Media / Sumber", "Tipe", "Jml Artikel", "Status"], 1):
+            cell = ws2.cell(row=row2, column=c, value=h)
+            cell.font = hfont(sz=10)
+            cell.fill = fill("2E75B6")
+            cell.alignment = center()
+            cell.border = border()
+        ws2.row_dimensions[row2].height = 22
+        row2 += 1
+
+        for i, (src, cnt) in enumerate(sorted(counter.items()), 1):
+            bg = row_hex if i % 2 == 0 else "FFFFFF"
+            vals = [no, src, mt, cnt, "✅ Berhasil Diproses"]
+            alns = [center(), left(), center(), center(), center()]
+            for c, (v, al) in enumerate(zip(vals, alns), 1):
+                cell = ws2.cell(row=row2, column=c, value=v)
+                cell.font = cfont(sz=10)
+                cell.fill = fill(bg)
+                cell.alignment = al
+                cell.border = border()
+            ws2.row_dimensions[row2].height = 18
+            no   += 1
+            row2 += 1
+
+        row2 += 1  # spacer
+
+    # Freeze header rows
+    ws["A3"].offset  # trigger
+    ws.freeze_panes  = "A4"
+    ws2.freeze_panes = "A3"
+
+    # Save to temp file
+    tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+    tmp.close()
+    wb.save(tmp.name)
+    return tmp.name
+
+
 def send_email(articles, date_str, chart_path):
-    """Kirim email HTML dengan grafik embedded ke EMAIL_RECIPIENT."""
-    msg = MIMEMultipart("related")
+    """Kirim email HTML dengan grafik embedded + lampiran Excel ke EMAIL_RECIPIENT."""
     positif = len([a for a in articles if a.get("sentiment") == "positif"])
     negatif = len([a for a in articles if a.get("sentiment") == "negatif"])
 
+    # Root message: mixed (untuk lampiran + related)
+    msg = MIMEMultipart("mixed")
     msg["Subject"] = f"📊 Media Monitoring BMRI — {date_str} | {positif} Positif / {negatif} Negatif"
     msg["From"]    = EMAIL_SENDER
     msg["To"]      = EMAIL_RECIPIENT
 
-    html_body = build_html_email(articles, date_str, chart_path)
+    # Bagian HTML (alternative + related untuk inline image)
+    related = MIMEMultipart("related")
     alternative = MIMEMultipart("alternative")
+    html_body = build_html_email(articles, date_str, chart_path)
     alternative.attach(MIMEText(html_body, "html", "utf-8"))
-    msg.attach(alternative)
+    related.attach(alternative)
 
     # Embed grafik sebagai inline image
     with open(chart_path, "rb") as f:
         img = MIMEImage(f.read(), _subtype="png")
     img.add_header("Content-ID", "<sentiment_chart>")
     img.add_header("Content-Disposition", "inline", filename="sentiment_chart.png")
-    msg.attach(img)
+    related.attach(img)
+    msg.attach(related)
+
+    # Lampiran Excel
+    excel_path = None
+    try:
+        excel_path = generate_excel_report(articles, date_str)
+        filename   = f"MediaMonitoring_BMRI_{date_str.replace(' ','_')}.xlsx"
+        with open(excel_path, "rb") as f:
+            excel_data = f.read()
+        excel_part = MIMEBase("application", "vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        excel_part.set_payload(excel_data)
+        encoders.encode_base64(excel_part)
+        excel_part.add_header("Content-Disposition", "attachment", filename=filename)
+        msg.attach(excel_part)
+        print(f"[Email] Excel terlampir: {filename}")
+    except Exception as e:
+        print(f"[Email] Gagal buat Excel: {e}")
+    finally:
+        if excel_path:
+            try:
+                os.remove(excel_path)
+            except Exception:
+                pass
 
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
