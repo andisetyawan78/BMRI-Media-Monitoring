@@ -62,17 +62,26 @@ def get_gmail_service():
     creds_b64   = os.environ.get("GMAIL_CREDENTIALS_JSON", "")
     token_b64   = os.environ.get("GMAIL_TOKEN_JSON", "")
 
+    def safe_b64decode(s):
+        """Decode base64 dengan auto-fix padding dan strip whitespace."""
+        s = s.strip().replace("\n", "").replace("\r", "").replace(" ", "")
+        # Tambah padding jika kurang
+        missing = len(s) % 4
+        if missing:
+            s += "=" * (4 - missing)
+        return base64.b64decode(s)
+
     with tempfile.TemporaryDirectory() as tmpdir:
         creds_path  = os.path.join(tmpdir, "credentials.json")
         token_path  = os.path.join(tmpdir, "token.json")
 
         if creds_b64:
             with open(creds_path, "w") as f:
-                f.write(base64.b64decode(creds_b64).decode())
+                f.write(safe_b64decode(creds_b64).decode())
 
         if token_b64:
             with open(token_path, "w") as f:
-                f.write(base64.b64decode(token_b64).decode())
+                f.write(safe_b64decode(token_b64).decode())
             creds = Credentials.from_authorized_user_file(token_path, GMAIL_SCOPES)
 
         if creds and creds.expired and creds.refresh_token:
