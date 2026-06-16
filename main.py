@@ -320,28 +320,19 @@ def parse_articles(html_bodies):
 # ─────────────────────────────────────────────
 # 4. ANALISIS SENTIMEN DENGAN CLAUDE AI
 # ─────────────────────────────────────────────
-def analyze_sentiment(articles):
-    """
-    Kirim daftar artikel ke Claude untuk scoring sentimen.
-    Return list dengan field tambahan: sentiment ('positif'/'negatif'), score (1-10), reason
-    """
-    if not articles:
-        return []
-
-    client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
-
-    # Buat prompt ringkasan artikel
+def _analyze_batch(client, batch):
+    """Analisis sentimen untuk satu batch artikel (maks 30)."""
     articles_text = ""
-    for i, a in enumerate(articles, 1):
+    for i, a in enumerate(batch, 1):
         articles_text += (
             f"{i}. JUDUL: {a['title']}\n"
-            f"   SNIPPET: {a['snippet'][:200]}\n"
+            f"   SNIPPET: {a['snippet'][:150]}\n"
             f"   SUMBER: {a['source']}\n\n"
         )
 
     prompt = f"""Kamu adalah analis media monitoring profesional untuk Bank Mandiri (BMRI) Indonesia.
 
-Berikut daftar artikel/berita yang menyebut Bank Mandiri atau BMRI pada hari ini:
+Berikut daftar artikel/berita:
 
 {articles_text}
 
@@ -349,46 +340,75 @@ Tugasmu:
 1. Tentukan sentimen setiap artikel: "positif" atau "negatif" terhadap citra/kinerja Bank Mandiri.
 2. Berikan skor 1-10 (10 = paling berdampak tinggi dalam kategorinya).
 3. Berikan alasan singkat (maks 15 kata).
-4. ABAIKAN artikel yang tidak relevan (spam, iklan judi, berita tidak terkait langsung Bank Mandiri BUMN).
+4. Tandai "irrelevant" jika artikel tidak terkait langsung Bank Mandiri BUMN (spam, iklan, dll).
 
-Kembalikan HANYA JSON array, format:
+Output HANYA JSON array ini, tanpa teks lain:
 [
-  {{"id": 1, "sentiment": "positif", "score": 9, "reason": "Alasan singkat di sini"}},
-  {{"id": 2, "sentiment": "negatif", "score": 7, "reason": "Alasan singkat di sini"}},
-  {{"id": 3, "sentiment": "irrelevant"}},
-  ...
-]
+  {{"id": 1, "sentiment": "positif", "score": 9, "reason": "Alasan singkat"}},
+  {{"id": 2, "sentiment": "negatif", "score": 7, "reason": "Alasan singkat"}},
+  {{"id": 3, "sentiment": "irrelevant"}}
+]"""
 
-Pastikan setiap artikel yang relevan memiliki sentiment dan score. Output HANYA JSON, tanpa teks lain."""
+    try:
+        response = client.messages.create(
+            model="claude-opus-4-8",
+            max_tokens=4096,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        raw = response.content[0].text.strip()
 
-    response = client.messages.create(
-        model="claude-opus-4-8",
-        max_tokens=4096,
-        messages=[{"role": "user", "content": prompt}]
-    )
+        # Ekstrak JSON array dari response
+        json_match = re.search(r"\[.*\]", raw, re.DOTALL)
+        if not json_match:
+            print(f"[AI] Tidak ada JSON dalam response, pakai default")
+            raise ValueError("No JSON found")
 
-    raw = response.content[0].text.strip()
-    # Ekstrak JSON dari response
-    json_match = re.search(r"\[.*\]", raw, re.DOTALL)
-    if not json_match:
-        print("[AI] Gagal parse JSON response")
-        return articles
+        scores     = json.loads(json_match.group())
+        score_map  = {item["id"]: item for item in scores}
 
-    scores = json.loads(json_match.group())
-    score_map = {item["id"]: item for item in scores}
+        result = []
+        for i, a in enumerate(batch, 1):
+            info = score_map.get(i, {})
+            if info.get("sentiment") == "irrelevant":
+                continue
+            a["sentiment"] = info.get("sentiment", "netral")
+            a["score"]     = info.get("score", 5)
+            a["reason"]    = info.get("reason", "")
+            result.append(a)
+        return result
 
-    # Gabungkan hasil ke artikel
-    result = []
-    for i, a in enumerate(articles, 1):
-        info = score_map.get(i, {})
-        if info.get("sentiment") == "irrelevant":
-            continue
-        a["sentiment"] = info.get("sentiment", "netral")
-        a["score"]     = info.get("score", 5)
-        a["reason"]    = info.get("reason", "")
-        result.append(a)
+    except Exception as e:
+        print(f"[AI] Error batch: {e} — pakai sentimen default")
+        for a in batch:
+            a.setdefault("sentiment", "netral")
+            a.setdefault("score", 5)
+            a.setdefault("reason", "")
+        return batch
 
-    return result
+
+def analyze_sentiment(articles):
+    """
+    Kirim daftar artikel ke Claude untuk scoring sentimen (diproses per batch).
+    Return list dengan field tambahan: sentiment ('positif'/'negatif'), score (1-10), reason
+    """
+    if not articles:
+        return []
+
+    client      = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
+    BATCH_SIZE  = 30
+    all_results = []
+    total_batch = (len(articles) + BATCH_SIZE - 1) // BATCH_SIZE
+
+    print(f"[AI] {len(articles)} artikel → {total_batch} batch @{BATCH_SIZE}")
+
+    for b in range(total_batch):
+        start = b * BATCH_SIZE
+        batch = articles[start:start + BATCH_SIZE]
+        print(f"[AI] Batch {b+1}/{total_batch} ({len(batch)} artikel)...")
+        all_results.extend(_analyze_batch(client, batch))
+
+    print(f"[AI] Selesai: {len(all_results)} artikel relevan")
+    return all_results
 
 
 # ─────────────────────────────────────────────
