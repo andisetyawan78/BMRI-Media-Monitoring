@@ -44,8 +44,9 @@ import anthropic
 # ─────────────────────────────────────────────
 # KONFIGURASI
 # ─────────────────────────────────────────────
-TALKWALKER_SENDER = "alerts@talkwalker.com"
-MONITOR_KEYWORDS  = ["Bank Mandiri", "BMRI"]
+TALKWALKER_SENDER    = "alerts@talkwalker.com"
+GOOGLE_ALERTS_SENDER = "googlealerts-noreply@google.com"
+MONITOR_KEYWORDS     = ["Bank Mandiri", "BMRI"]
 EMAIL_RECIPIENT   = os.environ.get("EMAIL_RECIPIENT", "sivbmri@gmail.com")
 EMAIL_SENDER      = os.environ.get("EMAIL_SENDER", "sivbmri@gmail.com")
 EMAIL_APP_PASS    = os.environ.get("EMAIL_APP_PASSWORD", "")
@@ -114,6 +115,27 @@ def fetch_talkwalker_emails(service):
     result   = service.users().messages().list(userId="me", q=query, maxResults=50).execute()
     messages = result.get("messages", [])
     print(f"[Gmail] Ditemukan {len(messages)} pesan")
+
+    html_bodies = []
+    for msg_meta in messages:
+        msg = service.users().messages().get(
+            userId="me", id=msg_meta["id"], format="full"
+        ).execute()
+        html = _extract_html(msg)
+        if html:
+            html_bodies.append(html)
+    return html_bodies
+
+
+def fetch_google_alerts_emails(service):
+    """Ambil semua email Google Alerts dari kemarin, return list HTML bodies."""
+    after, before = get_yesterday_range()
+    query = f"from:{GOOGLE_ALERTS_SENDER} after:{after} before:{before}"
+    print(f"[Google Alerts] Query: {query}")
+
+    result   = service.users().messages().list(userId="me", q=query, maxResults=50).execute()
+    messages = result.get("messages", [])
+    print(f"[Google Alerts] Ditemukan {len(messages)} pesan")
 
     html_bodies = []
     for msg_meta in messages:
@@ -318,6 +340,83 @@ def parse_articles(html_bodies):
             unique.append(a)
 
     print(f"[Parser] Total artikel unik: {len(unique)}")
+    return unique
+
+
+# ─────────────────────────────────────────────
+# 3b. PARSE GOOGLE ALERTS
+# ─────────────────────────────────────────────
+def parse_google_alerts(html_bodies):
+    """
+    Parse artikel dari Google Alerts email HTML.
+    Struktur: <h3><a href="google-redirect">Judul</a></h3>
+              <div><a href="...">Nama Sumber</a> - Tanggal</div>
+              <div>Snippet...</div>
+    Return list of dict: {title, snippet, date, source, media_type}
+    """
+    from urllib.parse import unquote
+
+    articles   = []
+    tag_re     = re.compile(r"<[^>]+>")
+    # Setiap blok artikel diawali <h3> dan diikuti konten sampai <h3> berikutnya
+    block_re   = re.compile(
+        r"<h3[^>]*>.*?<a[^>]+href=\"([^\"]+)\"[^>]*>(.*?)</a>.*?</h3>(.*?)(?=<h3|</table)",
+        re.DOTALL | re.IGNORECASE,
+    )
+    # Link sumber di div setelah <h3>
+    src_link_re = re.compile(
+        r"<a[^>]+href=\"([^\"]+)\"[^>]*>(.*?)</a>",
+        re.DOTALL | re.IGNORECASE,
+    )
+    # Ekstrak URL asli dari Google redirect (?url=...)
+    gurl_re = re.compile(r"[?&]url=([^&]+)", re.IGNORECASE)
+
+    for html in html_bodies:
+        for m in block_re.finditer(html):
+            raw_url   = m.group(1)
+            title_raw = m.group(2)
+            rest_html = m.group(3)
+
+            title = tag_re.sub("", title_raw).strip()
+            title = re.sub(r"\s+", " ", title)
+            if not title or len(title) < 8:
+                continue
+
+            # Ekstrak domain dari Google redirect URL
+            gurl_m = gurl_re.search(raw_url)
+            actual_url = unquote(gurl_m.group(1)) if gurl_m else raw_url
+            domain_m   = re.search(r"https?://(?:www\.)?([^/?#]+)", actual_url)
+            domain     = domain_m.group(1) if domain_m else ""
+
+            # Nama sumber dari link pertama di blok setelah <h3>
+            src_m    = src_link_re.search(rest_html)
+            src_name = tag_re.sub("", src_m.group(2)).strip() if src_m else domain
+
+            # Snippet: teks bersih dari sisa blok
+            snippet = tag_re.sub(" ", rest_html)
+            snippet = re.sub(r"\s+", " ", snippet).strip()[:300]
+
+            if not src_name:
+                src_name = domain
+
+            articles.append({
+                "title"     : title,
+                "snippet"   : snippet,
+                "date"      : "",
+                "source"    : src_name,
+                "media_type": "Google Alerts",
+            })
+
+    # Deduplikasi berdasarkan judul
+    seen   = set()
+    unique = []
+    for a in articles:
+        key = a["title"][:60].lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(a)
+
+    print(f"[Google Alerts] Total artikel unik: {len(unique)}")
     return unique
 
 
@@ -926,9 +1025,10 @@ def generate_excel_report(articles, date_str):
     row2 = 3
     no   = 1
     TYPE_META = [
-        ("News",    "📰", "1F4E79", "D6E4F0"),
-        ("Blog",    "📝", "375623", "E2EFDA"),
-        ("Twitter", "🐦", "1C3557", "DAE3F3"),
+        ("News",          "📰", "1F4E79", "D6E4F0"),
+        ("Blog",          "📝", "375623", "E2EFDA"),
+        ("Twitter",       "🐦", "1C3557", "DAE3F3"),
+        ("Google Alerts", "🔍", "B45309", "FEF3C7"),
     ]
 
     for mt, emoji, hdr_hex, row_hex in TYPE_META:
@@ -1052,21 +1152,39 @@ def main():
     print(f"{'='*55}\n")
 
     # 1. Ambil email Gmail
-    print("[1/6] Mengambil email Talkwalker dari Gmail...")
-    service     = get_gmail_service()
-    html_bodies = fetch_talkwalker_emails(service)
+    print("[1/6] Mengambil email dari Gmail...")
+    service = get_gmail_service()
 
-    if not html_bodies:
-        print("  ⚠ Tidak ada email Talkwalker ditemukan untuk kemarin.")
+    # Talkwalker Alerts
+    tw_bodies = fetch_talkwalker_emails(service)
+    # Google Alerts
+    ga_bodies = fetch_google_alerts_emails(service)
+
+    if not tw_bodies and not ga_bodies:
+        print("  ⚠ Tidak ada email alert ditemukan untuk kemarin.")
         send_telegram_text(
             f"ℹ️ *Media Monitoring Bank Mandiri — {date_str}*\n\n"
-            "Tidak ada email Talkwalker yang ditemukan untuk periode ini."
+            "Tidak ada email alert yang ditemukan untuk periode ini."
         )
         return
 
     # 2. Parse artikel
     print("[2/6] Mem-parsing artikel...")
-    articles = parse_articles(html_bodies)
+    articles_tw = parse_articles(tw_bodies) if tw_bodies else []
+    articles_ga = parse_google_alerts(ga_bodies) if ga_bodies else []
+
+    # Gabungkan, deduplikasi berdasarkan judul
+    all_articles = articles_tw + articles_ga
+    seen_titles  = set()
+    articles     = []
+    for a in all_articles:
+        key = a["title"][:60].lower()
+        if key not in seen_titles:
+            seen_titles.add(key)
+            articles.append(a)
+
+    print(f"[Parser] Total gabungan: {len(articles)} artikel "
+          f"(Talkwalker: {len(articles_tw)}, Google Alerts: {len(articles_ga)})")
 
     if not articles:
         print("  ⚠ Tidak ada artikel relevan ditemukan.")
