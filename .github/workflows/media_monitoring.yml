@@ -3,7 +3,7 @@ name: Bank Mandiri Media Monitoring
 on:
   # Otomatis setiap hari jam 07:00 WIB = 00:00 UTC
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "0 7 * * *"
 
   # Bisa juga dijalankan manual dari tab Actions di GitHub
   workflow_dispatch:
