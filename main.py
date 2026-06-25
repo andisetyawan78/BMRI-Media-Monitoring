@@ -417,6 +417,7 @@ def parse_google_alerts(html_bodies):
                 "date"      : "",
                 "source"    : src_name,
                 "media_type": media_type,
+                "link"      : actual_url,
             })
 
     # Deduplikasi berdasarkan judul
@@ -483,6 +484,7 @@ def fetch_podcast_mentions():
                     "date"      : "",
                     "source"    : podcast_name,
                     "media_type": "Podcast",
+                    "link"      : ep.get("listennotes_url", ""),
                 })
         except Exception as e:
             print(f"[Podcast] Error: {e}")
@@ -1278,17 +1280,28 @@ def generate_tv_dashboard(articles, date_str, chart_path, narrative=None):
         html = ""
         for a in items[:limit]:
             bar_w = a.get("score", 0) * 10
+            link  = a.get("link", "").strip()
+            title_html = (
+                f'<a class="atitle-link" href="{link}" target="_blank" rel="noopener">{a.get("title","")}</a>'
+                if link else
+                f'<span>{a.get("title","")}</span>'
+            )
+            link_html = (
+                f'<a class="alink" href="{link}" target="_blank" rel="noopener">🔗 Buka artikel</a>'
+                if link else ""
+            )
             html += f"""
             <div class="acard">
               <div class="ascore" style="color:{color}">{a.get('score','')}</div>
               <div class="acontent">
-                <div class="atitle">{a.get('title','')}</div>
+                <div class="atitle">{title_html}</div>
                 <div class="ameta">
                   <span class="abadge" style="background:{color}22;color:{color}">{a.get('media_type','')}</span>
                   <span class="asrc">{a.get('source','')}</span>
                   <span class="areason">{a.get('reason','')}</span>
                 </div>
                 <div class="abar"><div class="afill" style="width:{bar_w}%;background:{color}"></div></div>
+                {link_html}
               </div>
             </div>"""
         return html
@@ -1331,7 +1344,7 @@ body{{background:#080d1a;color:#e2e8f0;font-family:'Segoe UI',Arial,sans-serif;p
 .card .lbl{{font-size:.78rem;color:#94a3b8;margin-top:8px;text-transform:uppercase;letter-spacing:1px}}
 /* Chart */
 .chart-box{{background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:20px;margin-bottom:26px;text-align:center}}
-.chart-box img{{max-width:100%;max-height:360px;border-radius:8px}}
+.chart-box img{{width:100%;max-height:700px;object-fit:contain;border-radius:8px}}
 /* Narrative */
 .narrative-box{{background:#0f172a;border:1px solid #1e293b;border-left:4px solid #3b82f6;border-radius:14px;padding:22px 26px;margin-bottom:26px}}
 .narrative-text{{font-size:1.05rem;line-height:1.85;color:#cbd5e1}}
@@ -1352,6 +1365,10 @@ body{{background:#080d1a;color:#e2e8f0;font-family:'Segoe UI',Arial,sans-serif;p
 .abar{{background:#1e293b;border-radius:4px;height:3px;overflow:hidden}}
 .afill{{height:100%;border-radius:4px}}
 .empty{{color:#334155;text-align:center;padding:24px;font-style:italic}}
+.atitle-link{{color:#e2e8f0;text-decoration:none}}
+.atitle-link:hover{{color:#93c5fd;text-decoration:underline}}
+.alink{{display:inline-block;margin-top:5px;font-size:.73rem;color:#60a5fa;text-decoration:none;padding:2px 8px;border:1px solid #1d4ed8;border-radius:12px}}
+.alink:hover{{background:#1d4ed833;color:#93c5fd}}
 /* Footer */
 .footer{{text-align:center;color:#1e293b;font-size:.8rem;padding-top:20px;border-top:1px solid #1e293b}}
 /* TV / large screen */
