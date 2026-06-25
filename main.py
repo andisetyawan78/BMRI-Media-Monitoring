@@ -53,6 +53,14 @@ EMAIL_APP_PASS    = os.environ.get("EMAIL_APP_PASSWORD", "")
 TG_TOKEN          = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TG_CHAT_ID        = os.environ.get("TELEGRAM_CHAT_ID", "")
 ANTHROPIC_KEY     = os.environ.get("ANTHROPIC_API_KEY", "")
+LISTENNOTES_KEY   = os.environ.get("LISTENNOTES_API_KEY", "")
+
+# Domain e-commerce yang dideteksi otomatis dari Google Alerts
+E_COMMERCE_DOMAINS = {
+    "tokopedia.com", "shopee.co.id", "shopee.com", "lazada.co.id",
+    "bukalapak.com", "blibli.com", "jd.id", "traveloka.com",
+    "tiket.com", "zalora.co.id", "bhinneka.com",
+}
 GMAIL_SCOPES      = ["https://www.googleapis.com/auth/gmail.readonly"]
 
 
@@ -399,12 +407,16 @@ def parse_google_alerts(html_bodies):
             if not src_name:
                 src_name = domain
 
+            # Deteksi e-commerce dari domain
+            is_ecommerce = any(d in domain for d in E_COMMERCE_DOMAINS)
+            media_type   = "E-Commerce" if is_ecommerce else "Google Alerts"
+
             articles.append({
                 "title"     : title,
                 "snippet"   : snippet,
                 "date"      : "",
                 "source"    : src_name,
-                "media_type": "Google Alerts",
+                "media_type": media_type,
             })
 
     # Deduplikasi berdasarkan judul
@@ -417,6 +429,74 @@ def parse_google_alerts(html_bodies):
             unique.append(a)
 
     print(f"[Google Alerts] Total artikel unik: {len(unique)}")
+    return unique
+
+
+# ─────────────────────────────────────────────
+# 3c. FETCH PODCAST (LISTENNOTES API)
+# ─────────────────────────────────────────────
+def fetch_podcast_mentions():
+    """
+    Cari sebutan Bank Mandiri / BMRI di episode podcast via ListenNotes API.
+    Memerlukan env LISTENNOTES_API_KEY (daftar gratis di listennotes.com/api).
+    """
+    if not LISTENNOTES_KEY:
+        print("[Podcast] LISTENNOTES_API_KEY tidak diset, skip.")
+        return []
+
+    yesterday  = datetime.date.today() - datetime.timedelta(days=1)
+    pub_after  = int(datetime.datetime.combine(
+        yesterday, datetime.time.min, tzinfo=datetime.timezone.utc
+    ).timestamp())
+
+    articles = []
+    for keyword in MONITOR_KEYWORDS:
+        try:
+            resp = requests.get(
+                "https://listen-api.listennotes.com/api/v2/search",
+                headers={"X-ListenAPI-Key": LISTENNOTES_KEY},
+                params={
+                    "q"              : keyword,
+                    "type"           : "episode",
+                    "published_after": pub_after,
+                    "safe_mode"      : 0,
+                    "only_in"        : "title,description",
+                },
+                timeout=20,
+            )
+            if resp.status_code == 401:
+                print("[Podcast] API key tidak valid.")
+                break
+            if resp.status_code != 200:
+                print(f"[Podcast] ListenNotes error: {resp.status_code}")
+                continue
+
+            for ep in resp.json().get("results", []):
+                title        = ep.get("title_original", "").strip()
+                podcast_name = ep.get("podcast", {}).get("title_original", "Podcast")
+                snippet      = re.sub(r"<[^>]+>", "", ep.get("description_original", ""))[:300]
+                if not title:
+                    continue
+                articles.append({
+                    "title"     : title,
+                    "snippet"   : snippet,
+                    "date"      : "",
+                    "source"    : podcast_name,
+                    "media_type": "Podcast",
+                })
+        except Exception as e:
+            print(f"[Podcast] Error: {e}")
+
+    # Deduplikasi
+    seen   = set()
+    unique = []
+    for a in articles:
+        key = a["title"][:60].lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(a)
+
+    print(f"[Podcast] Total episode unik: {len(unique)}")
     return unique
 
 
@@ -512,6 +592,72 @@ def analyze_sentiment(articles):
 
     print(f"[AI] Selesai: {len(all_results)} artikel relevan")
     return all_results
+
+
+# ─────────────────────────────────────────────
+# 4b. RINGKASAN NARATIF EKSEKUTIF
+# ─────────────────────────────────────────────
+def generate_narrative_summary(articles, date_str):
+    """
+    Generate ringkasan naratif eksekutif 3 paragraf menggunakan Claude AI.
+    Return string teks narasi, atau None jika gagal.
+    """
+    if not articles:
+        return None
+
+    client  = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
+    negatif = sorted([a for a in articles if a.get("sentiment") == "negatif"],
+                     key=lambda x: -x.get("score", 0))
+    positif = sorted([a for a in articles if a.get("sentiment") == "positif"],
+                     key=lambda x: -x.get("score", 0))
+
+    # Rangkuman top artikel untuk prompt
+    neg_list = "\n".join(
+        f"- [{a['score']}/10] {a['title']} | {a['source']} | {a.get('reason','')}"
+        for a in negatif[:8]
+    ) or "Tidak ada"
+    pos_list = "\n".join(
+        f"- [{a['score']}/10] {a['title']} | {a['source']} | {a.get('reason','')}"
+        for a in positif[:8]
+    ) or "Tidak ada"
+
+    # Hitung breakdown per kanal
+    from collections import Counter
+    kanal = Counter(a.get("media_type", "News") for a in articles)
+    kanal_str = ", ".join(f"{k}: {v}" for k, v in kanal.items())
+
+    prompt = f"""Kamu adalah analis komunikasi senior Bank Mandiri.
+
+DATA MEDIA MONITORING — {date_str}
+Total artikel: {len(articles)} | Negatif: {len(negatif)} | Positif: {len(positif)}
+Kanal: {kanal_str}
+
+TOP BERITA NEGATIF:
+{neg_list}
+
+TOP BERITA POSITIF:
+{pos_list}
+
+Tulis RINGKASAN NARATIF EKSEKUTIF dalam Bahasa Indonesia yang formal dan padat.
+Format TEPAT 3 paragraf:
+1. Gambaran umum sentimen media hari ini dan tema dominan
+2. Isu-isu negatif utama yang perlu perhatian manajemen (jika ada, sebutkan konkret)
+3. Poin positif menonjol dan rekomendasi tindak lanjut singkat
+
+Maksimal 200 kata total. Langsung ke inti, tanpa pembuka seperti "Berikut ringkasan..."."""
+
+    try:
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=512,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        narasi = response.content[0].text.strip()
+        print("[Narasi] Ringkasan naratif berhasil dibuat.")
+        return narasi
+    except Exception as e:
+        print(f"[Narasi] Error: {e}")
+        return None
 
 
 # ─────────────────────────────────────────────
@@ -739,7 +885,7 @@ def send_telegram_photo(image_path, caption=""):
 # ─────────────────────────────────────────────
 # 8. KIRIM EMAIL (SMTP GMAIL)
 # ─────────────────────────────────────────────
-def build_html_email(articles, date_str, chart_path):
+def build_html_email(articles, date_str, chart_path, narrative=None):
     """Buat HTML email lengkap dengan tabel berita dan grafik embedded."""
     positif = sorted(
         [a for a in articles if a.get("sentiment") == "positif"],
@@ -858,6 +1004,14 @@ def build_html_email(articles, date_str, chart_path):
       {pos_rows if pos_rows else '<tr><td colspan="3" style="padding:14px;text-align:center;color:#888;font-size:12px">Tidak ada berita positif hari ini.</td></tr>'}
     </table>
   </td></tr>
+
+  <!-- Narrative Summary -->
+  {f'''<tr><td style="padding:20px 32px 8px">
+    <div style="font-size:14px;font-weight:700;color:#1F4E79;margin-bottom:10px">📋 Ringkasan Naratif Eksekutif</div>
+    <div style="background:#F0F4FF;border-left:4px solid #2E75B6;border-radius:0 8px 8px 0;padding:16px 18px;font-size:13px;line-height:1.7;color:#1a1a1a">
+      {narrative.replace(chr(10), '<br>')}
+    </div>
+  </td></tr>''' if narrative else ''}
 
   <!-- Footer -->
   <tr><td style="padding:20px 32px;background:#F8F9FB;border-top:1px solid #eee;text-align:center">
@@ -1029,6 +1183,8 @@ def generate_excel_report(articles, date_str):
         ("Blog",          "📝", "375623", "E2EFDA"),
         ("Twitter",       "🐦", "1C3557", "DAE3F3"),
         ("Google Alerts", "🔍", "B45309", "FEF3C7"),
+        ("Podcast",       "🎙️", "6B21A8", "F3E8FF"),
+        ("E-Commerce",    "🛒", "065F46", "D1FAE5"),
     ]
 
     for mt, emoji, hdr_hex, row_hex in TYPE_META:
@@ -1083,7 +1239,184 @@ def generate_excel_report(articles, date_str):
     return tmp.name
 
 
-def send_email(articles, date_str, chart_path):
+# ─────────────────────────────────────────────
+# 8b. GENERATE TV DASHBOARD (GitHub Pages)
+# ─────────────────────────────────────────────
+def generate_tv_dashboard(articles, date_str, chart_path, narrative=None):
+    """
+    Generate HTML dashboard TV-friendly untuk GitHub Pages.
+    Chart di-embed sebagai base64 sehingga file HTML berdiri sendiri.
+    Return string HTML.
+    """
+    negatif = sorted([a for a in articles if a.get("sentiment") == "negatif"],
+                     key=lambda x: -x.get("score", 0))
+    positif = sorted([a for a in articles if a.get("sentiment") == "positif"],
+                     key=lambda x: -x.get("score", 0))
+    total   = len(articles)
+    pct_pos = round(len(positif) / total * 100) if total else 0
+
+    if pct_pos >= 60:
+        sent_color, sent_label, sent_bg = "#4ade80", "POSITIF ✅", "#14532d"
+    elif pct_pos < 40:
+        sent_color, sent_label, sent_bg = "#f87171", "NEGATIF ⚠️", "#7f1d1d"
+    else:
+        sent_color, sent_label, sent_bg = "#fbbf24", "NETRAL ⚡", "#78350f"
+
+    # Embed chart sebagai base64
+    chart_b64 = ""
+    try:
+        with open(chart_path, "rb") as f:
+            chart_b64 = base64.b64encode(f.read()).decode()
+    except Exception:
+        pass
+
+    now_str = datetime.datetime.now().strftime("%d %B %Y, %H:%M WIB")
+
+    def article_cards(items, color, limit=15):
+        if not items:
+            return f'<div class="empty">Tidak ada berita dalam kategori ini ✅</div>'
+        html = ""
+        for a in items[:limit]:
+            bar_w = a.get("score", 0) * 10
+            html += f"""
+            <div class="acard">
+              <div class="ascore" style="color:{color}">{a.get('score','')}</div>
+              <div class="acontent">
+                <div class="atitle">{a.get('title','')}</div>
+                <div class="ameta">
+                  <span class="abadge" style="background:{color}22;color:{color}">{a.get('media_type','')}</span>
+                  <span class="asrc">{a.get('source','')}</span>
+                  <span class="areason">{a.get('reason','')}</span>
+                </div>
+                <div class="abar"><div class="afill" style="width:{bar_w}%;background:{color}"></div></div>
+              </div>
+            </div>"""
+        return html
+
+    narasi_block = ""
+    if narrative:
+        narasi_block = f"""
+        <section class="narrative-box">
+          <h2 class="sec-title">📋 Ringkasan Naratif Eksekutif</h2>
+          <p class="narrative-text">{narrative.replace(chr(10), '<br><br>')}</p>
+        </section>"""
+
+    chart_block = ""
+    if chart_b64:
+        chart_block = f"""
+        <section class="chart-box">
+          <h2 class="sec-title">📈 Grafik Sentimen</h2>
+          <img src="data:image/png;base64,{chart_b64}" alt="Grafik Sentimen">
+        </section>"""
+
+    html = f"""<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="600">
+<title>Media Monitoring BMRI — {date_str}</title>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{background:#080d1a;color:#e2e8f0;font-family:'Segoe UI',Arial,sans-serif;padding:28px 40px;min-height:100vh}}
+/* Header */
+.hdr{{text-align:center;padding:16px 0 28px;border-bottom:1px solid #1e293b;margin-bottom:28px}}
+.hdr h1{{font-size:2.4rem;font-weight:800;color:#fff;letter-spacing:.5px}}
+.hdr .sub{{color:#64748b;font-size:1rem;margin-top:8px}}
+.hdr .upd{{color:#334155;font-size:.82rem;margin-top:4px}}
+/* Summary cards */
+.cards{{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:26px}}
+.card{{background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:22px 12px;text-align:center}}
+.card .num{{font-size:3.2rem;font-weight:800;line-height:1}}
+.card .lbl{{font-size:.78rem;color:#94a3b8;margin-top:8px;text-transform:uppercase;letter-spacing:1px}}
+/* Chart */
+.chart-box{{background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:20px;margin-bottom:26px;text-align:center}}
+.chart-box img{{max-width:100%;max-height:360px;border-radius:8px}}
+/* Narrative */
+.narrative-box{{background:#0f172a;border:1px solid #1e293b;border-left:4px solid #3b82f6;border-radius:14px;padding:22px 26px;margin-bottom:26px}}
+.narrative-text{{font-size:1.05rem;line-height:1.85;color:#cbd5e1}}
+/* Articles grid */
+.grid{{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:26px}}
+.panel{{background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:20px}}
+.sec-title{{font-size:1.05rem;font-weight:700;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #1e293b}}
+/* Article card */
+.acard{{display:flex;gap:14px;padding:11px 0;border-bottom:1px solid #ffffff08;align-items:flex-start}}
+.acard:last-child{{border-bottom:none}}
+.ascore{{font-size:1.7rem;font-weight:800;min-width:38px;text-align:center;line-height:1}}
+.acontent{{flex:1}}
+.atitle{{font-size:.9rem;font-weight:600;color:#e2e8f0;line-height:1.4;margin-bottom:5px}}
+.ameta{{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:5px}}
+.abadge{{font-size:.68rem;padding:2px 8px;border-radius:20px;font-weight:600}}
+.asrc{{font-size:.75rem;color:#475569}}
+.areason{{font-size:.75rem;color:#64748b;font-style:italic}}
+.abar{{background:#1e293b;border-radius:4px;height:3px;overflow:hidden}}
+.afill{{height:100%;border-radius:4px}}
+.empty{{color:#334155;text-align:center;padding:24px;font-style:italic}}
+/* Footer */
+.footer{{text-align:center;color:#1e293b;font-size:.8rem;padding-top:20px;border-top:1px solid #1e293b}}
+/* TV / large screen */
+@media(min-width:1280px){{
+  body{{padding:32px 60px}}
+  .hdr h1{{font-size:2.8rem}}
+  .card .num{{font-size:3.8rem}}
+  .atitle{{font-size:.95rem}}
+  .ascore{{font-size:2rem}}
+  .narrative-text{{font-size:1.1rem}}
+}}
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <h1>📊 Media Monitoring Bank Mandiri</h1>
+  <div class="sub">Periode: {date_str} &nbsp;·&nbsp; Sumber: Talkwalker · Google Alerts · Podcast · E-Commerce</div>
+  <div class="upd">Auto-refresh setiap 10 menit &nbsp;·&nbsp; Terakhir diperbarui: {now_str}</div>
+</header>
+
+<div class="cards">
+  <div class="card">
+    <div class="num" style="color:#94a3b8">{total}</div>
+    <div class="lbl">Total Artikel</div>
+  </div>
+  <div class="card">
+    <div class="num" style="color:#f87171">{len(negatif)}</div>
+    <div class="lbl">Berita Negatif</div>
+  </div>
+  <div class="card">
+    <div class="num" style="color:#4ade80">{len(positif)}</div>
+    <div class="lbl">Berita Positif</div>
+  </div>
+  <div class="card" style="border-color:{sent_color}33;background:{sent_bg}33">
+    <div class="num" style="color:{sent_color}">{pct_pos}%</div>
+    <div class="lbl" style="color:{sent_color}">{sent_label}</div>
+  </div>
+</div>
+
+{chart_block}
+{narasi_block}
+
+<div class="grid">
+  <div class="panel">
+    <h2 class="sec-title" style="color:#f87171">🔴 Berita Negatif — Top {min(len(negatif),15)}</h2>
+    {article_cards(negatif, "#f87171")}
+  </div>
+  <div class="panel">
+    <h2 class="sec-title" style="color:#4ade80">🟢 Berita Positif — Top {min(len(positif),15)}</h2>
+    {article_cards(positif, "#4ade80")}
+  </div>
+</div>
+
+<footer class="footer">
+  Powered by Claude AI (Anthropic) &nbsp;·&nbsp; Talkwalker Alerts &nbsp;·&nbsp; Google Alerts &nbsp;·&nbsp; ListenNotes
+  &nbsp;&nbsp;|&nbsp;&nbsp; Update otomatis setiap hari pukul 07.00 WIB via GitHub Actions
+</footer>
+
+</body>
+</html>"""
+    return html
+
+
+def send_email(articles, date_str, chart_path, narrative=None):
     """Kirim email HTML dengan grafik embedded + lampiran Excel ke EMAIL_RECIPIENT."""
     positif = len([a for a in articles if a.get("sentiment") == "positif"])
     negatif = len([a for a in articles if a.get("sentiment") == "negatif"])
@@ -1097,7 +1430,7 @@ def send_email(articles, date_str, chart_path):
     # Bagian HTML (alternative + related untuk inline image)
     related = MIMEMultipart("related")
     alternative = MIMEMultipart("alternative")
-    html_body = build_html_email(articles, date_str, chart_path)
+    html_body = build_html_email(articles, date_str, chart_path, narrative=narrative)
     alternative.attach(MIMEText(html_body, "html", "utf-8"))
     related.attach(alternative)
 
@@ -1151,57 +1484,74 @@ def main():
     print(f"  BANK MANDIRI MEDIA MONITORING — {date_str}")
     print(f"{'='*55}\n")
 
-    # 1. Ambil email Gmail
-    print("[1/6] Mengambil email dari Gmail...")
-    service = get_gmail_service()
-
-    # Talkwalker Alerts
+    # 1. Ambil semua sumber
+    print("[1/7] Mengambil email dari Gmail...")
+    service   = get_gmail_service()
     tw_bodies = fetch_talkwalker_emails(service)
-    # Google Alerts
     ga_bodies = fetch_google_alerts_emails(service)
 
-    if not tw_bodies and not ga_bodies:
-        print("  ⚠ Tidak ada email alert ditemukan untuk kemarin.")
+    # 2. Fetch podcast
+    print("[2/7] Mencari sebutan di Podcast...")
+    articles_pod = fetch_podcast_mentions()
+
+    if not tw_bodies and not ga_bodies and not articles_pod:
+        print("  ⚠ Tidak ada data dari semua sumber.")
         send_telegram_text(
             f"ℹ️ *Media Monitoring Bank Mandiri — {date_str}*\n\n"
-            "Tidak ada email alert yang ditemukan untuk periode ini."
+            "Tidak ada data ditemukan untuk periode ini."
         )
         return
 
-    # 2. Parse artikel
-    print("[2/6] Mem-parsing artikel...")
+    # 3. Parse artikel
+    print("[3/7] Mem-parsing artikel...")
     articles_tw = parse_articles(tw_bodies) if tw_bodies else []
     articles_ga = parse_google_alerts(ga_bodies) if ga_bodies else []
 
-    # Gabungkan, deduplikasi berdasarkan judul
-    all_articles = articles_tw + articles_ga
-    seen_titles  = set()
-    articles     = []
-    for a in all_articles:
+    # Gabungkan semua, deduplikasi berdasarkan judul
+    all_raw     = articles_tw + articles_ga + articles_pod
+    seen_titles = set()
+    articles    = []
+    for a in all_raw:
         key = a["title"][:60].lower()
         if key not in seen_titles:
             seen_titles.add(key)
             articles.append(a)
 
     print(f"[Parser] Total gabungan: {len(articles)} artikel "
-          f"(Talkwalker: {len(articles_tw)}, Google Alerts: {len(articles_ga)})")
+          f"(Talkwalker: {len(articles_tw)}, Google Alerts: {len(articles_ga)}, "
+          f"Podcast: {len(articles_pod)})")
 
     if not articles:
         print("  ⚠ Tidak ada artikel relevan ditemukan.")
         return
 
-    # 3. Analisis sentimen AI
-    print("[3/6] Menganalisis sentimen dengan Claude AI...")
+    # 4. Analisis sentimen AI
+    print("[4/7] Menganalisis sentimen dengan Claude AI...")
     articles = analyze_sentiment(articles)
 
-    # 4. Buat grafik
-    print("[4/6] Membuat grafik sentimen...")
+    # 5. Ringkasan naratif
+    print("[5/7] Membuat ringkasan naratif eksekutif...")
+    narrative = generate_narrative_summary(articles, date_str)
+
+    # 6. Buat grafik
+    print("[6/7] Membuat grafik sentimen...")
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         chart_path = tmp.name
     generate_chart(articles, chart_path)
 
-    # 5. Kirim Telegram
-    print("[5/6] Mengirim ke Telegram...")
+    # 7. Generate TV Dashboard
+    print("[7/8] Membuat TV dashboard...")
+    try:
+        dashboard_html = generate_tv_dashboard(articles, date_str, chart_path, narrative=narrative)
+        os.makedirs("docs", exist_ok=True)
+        with open("docs/index.html", "w", encoding="utf-8") as f:
+            f.write(dashboard_html)
+        print("[Dashboard] docs/index.html tersimpan.")
+    except Exception as e:
+        print(f"[Dashboard] Gagal: {e}")
+
+    # 8. Kirim Telegram (5 pesan)
+    print("[8/8] Mengirim ke Telegram & Email...")
     send_telegram_text(format_telegram_negative(articles, date_str))
     send_telegram_text(format_telegram_positive(articles, date_str))
     send_telegram_photo(
@@ -1209,10 +1559,13 @@ def main():
         caption=f"📊 *Grafik Sentimen Bank Mandiri — {date_str}*\n_{len(articles)} berita dianalisis_"
     )
     send_telegram_text(format_summary(articles, date_str))
+    if narrative:
+        send_telegram_text(
+            f"📋 *Ringkasan Naratif Eksekutif — {date_str}*\n\n{narrative}"
+        )
 
-    # 6. Kirim Email
-    print("[6/6] Mengirim email...")
-    send_email(articles, date_str, chart_path)
+    # Kirim Email
+    send_email(articles, date_str, chart_path, narrative=narrative)
 
     # Cleanup
     os.unlink(chart_path)
