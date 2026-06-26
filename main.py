@@ -1600,7 +1600,9 @@ def generate_tv_dashboard(articles, date_str, chart_path=None, narrative=None):
         for a in articles
     ]
     embedded_json = _json.dumps(embedded, ensure_ascii=False, separators=(",", ":"))
-    nar_safe = (narrative or "").replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${").replace("\n", "<br>")
+    # Escape </script> agar HTML parser tidak memutus <script> block lebih awal
+    embedded_json = embedded_json.replace("</", "<\\/")
+    nar_safe = (narrative or "").replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${").replace("\n", "<br>").replace("</", "<\\/")
 
     # ── CSS ──────────────────────────────────────────────────────────────────
     css = (
