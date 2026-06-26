@@ -1637,6 +1637,7 @@ def generate_tv_dashboard(articles, date_str, chart_path=None, narrative=None):
         ".leg{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}"
         ".leg-r{display:flex;align-items:center;gap:6px;font-size:.7rem}"
         ".ldot{width:8px;height:8px;border-radius:2px;flex-shrink:0}"
+        ".oldest-date{font-size:.6rem;color:#475569;text-align:center;margin-bottom:6px}"
         ".divider{border:none;border-top:1px solid #1e293b;margin:7px 0}"
         ".tipe-hdr{display:grid;grid-template-columns:1fr 30px 22px 22px;font-size:.57rem;color:#334155;font-weight:700;margin-bottom:2px;padding:0 2px}"
         ".tipe-row{display:grid;grid-template-columns:1fr 30px 22px 22px;align-items:center;"
@@ -1732,6 +1733,10 @@ function render(days){
   gi('leg-neg').textContent='Negatif '+nN+' ('+pN+'%)';
   gi('leg-pos').textContent='Positif '+nP+' ('+pP+'%)';
   drawDonut(pP);
+  if(dates.length){
+    const d0=dates[0],d1=dates[dates.length-1];
+    gi('oldest-date').textContent=d0===d1?'📅 '+fd(d0):'📅 '+fd(d0)+' – '+fd(d1);
+  }else gi('oldest-date').textContent='';
 
   // per tipe media
   const td={};
@@ -1881,6 +1886,7 @@ init();
         '      <div class="leg-r"><div class="ldot" style="background:#4ade80"></div>'
         '<span style="color:#4ade80" id="leg-pos">Positif —</span></div>\n'
         '    </div>\n'
+        '    <div class="oldest-date" id="oldest-date"></div>\n'
         '    <hr class="divider">\n'
         '    <div class="tipe-hdr"><span>Tipe</span>'
         '<span style="text-align:center">Ttl</span>'
