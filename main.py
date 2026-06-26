@@ -1572,429 +1572,198 @@ def save_articles_history(articles, date_str, narrative, docs_dir):
 # ─────────────────────────────────────────────
 def generate_tv_dashboard(articles, date_str, chart_path=None, narrative=None):
     """
-    Generate HTML dashboard TV dengan time filter (Kemarin s/d 1 Tahun).
-    Load data dari docs/articles.json via JS fetch(). Render dinamis di browser.
+    Generate HTML dashboard TV-friendly untuk GitHub Pages.
+    Chart di-embed sebagai base64 sehingga file HTML berdiri sendiri.
     Return string HTML.
     """
-    import json as _json
+    negatif = sorted([a for a in articles if a.get("sentiment") == "negatif"],
+                     key=lambda x: -x.get("score", 0))
+    positif = sorted([a for a in articles if a.get("sentiment") == "positif"],
+                     key=lambda x: -x.get("score", 0))
+    total   = len(articles)
+    pct_pos = round(len(positif) / total * 100) if total else 0
+
+    if pct_pos >= 60:
+        sent_color, sent_label, sent_bg = "#4ade80", "POSITIF ✅", "#14532d"
+    elif pct_pos < 40:
+        sent_color, sent_label, sent_bg = "#f87171", "NEGATIF ⚠️", "#7f1d1d"
+    else:
+        sent_color, sent_label, sent_bg = "#fbbf24", "NETRAL ⚡", "#78350f"
+
+    # Embed chart sebagai base64
+    chart_b64 = ""
+    try:
+        with open(chart_path, "rb") as f:
+            chart_b64 = base64.b64encode(f.read()).decode()
+    except Exception:
+        pass
 
     now_str = datetime.datetime.now().strftime("%d %B %Y, %H:%M WIB")
 
-    try:
-        run_date = datetime.datetime.strptime(date_str, "%d %B %Y").strftime("%Y-%m-%d")
-    except Exception:
-        run_date = datetime.datetime.now().strftime("%Y-%m-%d")
+    def esc(s):
+        return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
-    # Embedded JSON fallback (untuk tampilan pertama sebelum articles.json dimuat)
-    embedded = [
-        {
-            "run_date":   run_date,
-            "title":      a.get("title", ""),
-            "source":     a.get("source", ""),
-            "sentiment":  a.get("sentiment", ""),
-            "score":      a.get("score", 0),
-            "reason":     a.get("reason", ""),
-            "media_type": a.get("media_type", "News"),
-            "link":       a.get("link", ""),
-        }
-        for a in articles
-    ]
-    embedded_json = _json.dumps(embedded, ensure_ascii=False, separators=(",", ":"))
-    # Escape </script> agar HTML parser tidak memutus <script> block lebih awal
-    embedded_json = embedded_json.replace("</", "<\\/")
-    nar_safe = (narrative or "").replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${").replace("\n", "<br>").replace("</", "<\\/")
+    def article_cards(items, color, limit=15):
+        if not items:
+            return '<div class="empty">Tidak ada berita dalam kategori ini ✅</div>'
+        html = ""
+        for a in items[:limit]:
+            bar_w = a.get("score", 0) * 10
+            title  = esc(a.get("title", ""))
+            link   = a.get("link", "")
+            source = esc(a.get("source", ""))
+            reason = esc(a.get("reason", ""))
+            mtype  = esc(a.get("media_type", ""))
+            if link:
+                title_html = (f'<a href="{esc(link)}" target="_blank" rel="noopener" '
+                              f'class="atitle-link">{title}</a>')
+                link_html  = (f'<a href="{esc(link)}" target="_blank" rel="noopener" '
+                              f'class="alink">↗ Buka artikel</a>')
+            else:
+                title_html = f'<span class="atitle-nolink">{title}</span>'
+                link_html  = ""
+            html += (
+                f'<div class="acard">'
+                f'<div class="ascore" style="color:{color}">{a.get("score","")}</div>'
+                f'<div class="acontent">'
+                f'<div class="atitle">{title_html}</div>'
+                f'<div class="ameta">'
+                f'<span class="abadge" style="background:{color}22;color:{color}">{mtype}</span>'
+                f'<span class="asrc">{source}</span>'
+                f'<span class="areason">{reason}</span>'
+                f'</div>'
+                f'<div class="abar"><div class="afill" style="width:{bar_w}%;background:{color}"></div></div>'
+                f'{link_html}'
+                f'</div></div>'
+            )
+        return html
 
-    # ── CSS ──────────────────────────────────────────────────────────────────
-    css = (
-        "*{margin:0;padding:0;box-sizing:border-box}"
-        "body{background:#080d1a;color:#e2e8f0;font-family:'Segoe UI',Arial,sans-serif;padding:16px 24px}"
-        ".hdr{text-align:center;padding:12px 0 14px;border-bottom:1px solid #1e293b;margin-bottom:11px}"
-        ".hdr h1{font-size:1.65rem;font-weight:800;color:#fff}"
-        ".hdr .sub{color:#64748b;font-size:.78rem;margin-top:4px}"
-        ".hdr .upd{color:#334155;font-size:.68rem;margin-top:3px}"
-        ".filter-bar{display:flex;align-items:center;gap:8px;background:#0f172a;border:1px solid #1e293b;"
-        "border-radius:10px;padding:8px 14px;margin-bottom:11px;flex-wrap:wrap}"
-        ".filter-label{font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;"
-        "letter-spacing:.6px;margin-right:4px;white-space:nowrap}"
-        ".filter-btn{padding:5px 13px;border-radius:20px;font-size:.74rem;font-weight:600;"
-        "border:1px solid #1e293b;background:transparent;color:#94a3b8;cursor:pointer;transition:all .15s;white-space:nowrap}"
-        ".filter-btn:hover{border-color:#3b82f6;color:#93c5fd}"
-        ".filter-btn.active{background:#1d4ed8;border-color:#1d4ed8;color:#fff}"
-        ".filter-divider{width:1px;height:16px;background:#1e293b;margin:0 2px}"
-        ".filter-info{margin-left:auto;font-size:.67rem;color:#475569;white-space:nowrap}"
-        ".stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:11px}"
-        ".stat-card{background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:12px 8px;text-align:center}"
-        ".stat-num{font-size:1.85rem;font-weight:800;line-height:1}"
-        ".stat-lbl{font-size:.6rem;color:#64748b;margin-top:4px;text-transform:uppercase;letter-spacing:.6px}"
-        ".click-legend{display:flex;gap:18px;justify-content:center;align-items:center;background:#0f172a;"
-        "border-radius:7px;padding:5px 14px;margin-bottom:11px;font-size:.72rem;color:#64748b}"
-        ".cl-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}"
-        ".main-grid{display:grid;grid-template-columns:210px 1fr 1fr;gap:11px;align-items:start;margin-bottom:11px}"
-        ".left-panel{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:12px}"
-        ".lsec{font-size:.63rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.7px;text-align:center;margin-bottom:7px}"
-        ".donut-wrap{position:relative;width:120px;height:120px;margin:0 auto 7px}"
-        ".donut-range{font-size:.6rem;color:#475569;text-align:center;margin-bottom:7px;line-height:1.5}"
-        ".donut-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none}"
-        ".dpct{font-size:1.45rem;font-weight:800;line-height:1}"
-        ".dlbl{font-size:.58rem;font-weight:700;margin-top:2px}"
-        ".leg{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}"
-        ".leg-r{display:flex;align-items:center;gap:6px;font-size:.7rem}"
-        ".ldot{width:8px;height:8px;border-radius:2px;flex-shrink:0}"
-        ".divider{border:none;border-top:1px solid #1e293b;margin:7px 0}"
-        ".tipe-hdr{display:grid;grid-template-columns:1fr 30px 22px 22px;font-size:.57rem;color:#334155;font-weight:700;margin-bottom:2px;padding:0 2px}"
-        ".tipe-row{display:grid;grid-template-columns:1fr 30px 22px 22px;align-items:center;"
-        "padding:3px 2px;border-bottom:1px solid #1e293b18;font-size:.68rem}"
-        ".tipe-row:last-child{border:none}"
-        ".mdot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px}"
-        ".media-sec{font-size:.63rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin:0 0 4px}"
-        ".mhdr,.mrow{display:grid;grid-template-columns:1fr 24px 20px 20px;gap:3px;align-items:center;padding:0 5px}"
-        ".mhdr{font-size:.55rem;color:#334155;font-weight:700;margin-bottom:2px}"
-        ".mhdr span:not(:first-child){text-align:center}"
-        ".mrow{background:#080d1a;border-radius:4px;padding:4px 5px;margin-bottom:2px}"
-        ".msrc{font-size:.6rem;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
-        ".mtot{font-size:.65rem;font-weight:700;color:#e2e8f0;text-align:center}"
-        ".mneg{font-size:.6rem;color:#f87171;text-align:center}"
-        ".mpos{font-size:.6rem;color:#4ade80;text-align:center}"
-        ".src-scroll{max-height:320px;overflow-y:auto}"
-        ".art-panel{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:12px}"
-        ".art-hdr{font-size:.83rem;font-weight:700;margin-bottom:9px;padding-bottom:7px;border-bottom:1px solid #1e293b;text-align:center}"
-        ".acard{display:flex;gap:9px;padding:7px 0;border-bottom:1px solid #ffffff06;align-items:flex-start}"
-        ".acard:last-child{border:none}"
-        ".ascore{font-size:1.3rem;font-weight:800;min-width:28px;text-align:center;line-height:1}"
-        ".acontent{flex:1;min-width:0}"
-        ".adate{font-size:.57rem;color:#334155;margin-bottom:2px}"
-        ".atitle-link{display:block;font-size:.77rem;font-weight:600;color:#cbd5e1;text-decoration:none;"
-        "line-height:1.4;margin-bottom:2px;transition:color .15s}"
-        ".atitle-link:hover{color:#93c5fd;text-decoration:underline;text-underline-offset:2px}"
-        ".atitle-link::after{content:'\\2197';font-size:.65em;opacity:0;margin-left:3px;color:#60a5fa;transition:opacity .15s}"
-        ".atitle-link:hover::after{opacity:1}"
-        ".atitle-nolink{display:block;font-size:.77rem;font-weight:600;color:#374151;line-height:1.4;margin-bottom:2px}"
-        ".asrc{font-size:.63rem;color:#475569;margin-bottom:2px}"
-        ".areason{font-size:.6rem;color:#64748b;font-style:italic}"
-        ".abar{background:#1e293b;border-radius:3px;height:3px;overflow:hidden;margin-top:3px}"
-        ".afill{height:100%;border-radius:3px}"
-        ".alink{display:inline-block;margin-top:4px;font-size:.61rem;color:#60a5fa;text-decoration:none;"
-        "padding:2px 7px;border:1px solid #1d4ed8;border-radius:10px}"
-        ".alink:hover{background:#1d4ed822;color:#93c5fd}"
-        ".empty{color:#334155;text-align:center;padding:20px;font-style:italic;font-size:.78rem}"
-        ".narrative-box{background:#0f172a;border:1px solid #1e293b;border-left:4px solid #3b82f6;"
-        "border-radius:12px;padding:14px 18px;margin-bottom:11px}"
-        ".ntitle{font-size:.8rem;font-weight:700;color:#93c5fd;margin-bottom:6px}"
-        ".narrative-text{font-size:.77rem;line-height:1.8;color:#94a3b8}"
-        ".footer{text-align:center;color:#1e293b;font-size:.65rem;padding-top:10px;border-top:1px solid #1e293b}"
-        "@media(min-width:1400px){.main-grid{grid-template-columns:230px 1fr 1fr}}"
-    )
+    narasi_block = ""
+    if narrative:
+        nar_esc = narrative.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        narasi_block = (
+            '<section class="narrative-box">'
+            '<h2 class="sec-title">\U0001f4cb Ringkasan Naratif Eksekutif</h2>'
+            f'<p class="narrative-text">{nar_esc.replace(chr(10), "<br><br>")}</p>'
+            '</section>'
+        )
 
-    # ── JavaScript Logic (regular string — no f-string escaping needed) ───────
-    js_logic = """
-const TC={"News":"#58A6FF","Blog":"#4ade80","Twitter":"#1D9BF0","Podcast":"#BC8CFF","Google Alerts":"#F0A500","E-Commerce":"#f87171"};
-let ALL=EMBEDDED;
-let NARRATIVES={};
+    chart_block = ""
+    if chart_b64:
+        chart_block = (
+            '<section class="chart-box">'
+            '<h2 class="sec-title">\U0001f4c8 Grafik Sentimen</h2>'
+            f'<img src="data:image/png;base64,{chart_b64}" alt="Grafik Sentimen">'
+            '</section>'
+        )
 
-async function init(){
-  try{
-    const [artRes,narRes]=await Promise.all([
-      fetch('./articles.json').then(r=>r.ok?r.json():null).catch(()=>null),
-      fetch('./narratives.json').then(r=>r.ok?r.json():null).catch(()=>null)
-    ]);
-    if(artRes&&artRes.length)ALL=artRes;
-    if(narRes)NARRATIVES=narRes;
-  }catch(e){}
-  try{render(currentDays);}catch(e){gi('filter-info').textContent='Error: '+e.message;}
-}
+    html = f"""<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="600">
+<title>Media Monitoring BMRI — {date_str}</title>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{background:#080d1a;color:#e2e8f0;font-family:'Segoe UI',Arial,sans-serif;padding:28px 40px;min-height:100vh}}
+.hdr{{text-align:center;padding:16px 0 28px;border-bottom:1px solid #1e293b;margin-bottom:28px}}
+.hdr h1{{font-size:2.4rem;font-weight:800;color:#fff;letter-spacing:.5px}}
+.hdr .sub{{color:#64748b;font-size:1rem;margin-top:8px}}
+.hdr .upd{{color:#334155;font-size:.82rem;margin-top:4px}}
+.click-legend{{display:flex;gap:18px;justify-content:center;align-items:center;background:#0f172a;border-radius:7px;padding:5px 14px;margin-bottom:18px;font-size:.78rem;color:#64748b}}
+.cl-dot{{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}}
+.cards{{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:26px}}
+.card{{background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:22px 12px;text-align:center}}
+.card .num{{font-size:3.2rem;font-weight:800;line-height:1}}
+.card .lbl{{font-size:.78rem;color:#94a3b8;margin-top:8px;text-transform:uppercase;letter-spacing:1px}}
+.chart-box{{background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:20px;margin-bottom:26px;text-align:center}}
+.chart-box img{{max-width:100%;max-height:360px;border-radius:8px}}
+.narrative-box{{background:#0f172a;border:1px solid #1e293b;border-left:4px solid #3b82f6;border-radius:14px;padding:22px 26px;margin-bottom:26px}}
+.narrative-text{{font-size:1.05rem;line-height:1.85;color:#cbd5e1}}
+.grid{{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:26px}}
+.panel{{background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:20px}}
+.sec-title{{font-size:1.05rem;font-weight:700;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #1e293b}}
+.acard{{display:flex;gap:14px;padding:11px 0;border-bottom:1px solid #ffffff08;align-items:flex-start}}
+.acard:last-child{{border-bottom:none}}
+.ascore{{font-size:1.7rem;font-weight:800;min-width:38px;text-align:center;line-height:1}}
+.acontent{{flex:1}}
+.atitle{{font-size:.9rem;font-weight:600;line-height:1.4;margin-bottom:5px}}
+.atitle-link{{color:#cbd5e1;text-decoration:none}}
+.atitle-link:hover{{color:#93c5fd;text-decoration:underline}}
+.atitle-nolink{{color:#64748b}}
+.ameta{{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:5px}}
+.abadge{{font-size:.68rem;padding:2px 8px;border-radius:20px;font-weight:600}}
+.asrc{{font-size:.75rem;color:#475569}}
+.areason{{font-size:.75rem;color:#64748b;font-style:italic}}
+.abar{{background:#1e293b;border-radius:4px;height:3px;overflow:hidden;margin-bottom:4px}}
+.afill{{height:100%;border-radius:4px}}
+.alink{{font-size:.72rem;color:#3b82f6;text-decoration:none}}
+.alink:hover{{text-decoration:underline}}
+.empty{{color:#334155;text-align:center;padding:24px;font-style:italic}}
+.footer{{text-align:center;color:#1e293b;font-size:.8rem;padding-top:20px;border-top:1px solid #1e293b}}
+@media(min-width:1280px){{
+  body{{padding:32px 60px}}
+  .hdr h1{{font-size:2.8rem}}
+  .card .num{{font-size:3.8rem}}
+  .atitle{{font-size:.95rem}}
+  .ascore{{font-size:2rem}}
+}}
+</style>
+</head>
+<body>
 
-let currentDays=1;
+<header class="hdr">
+  <h1>\U0001f4ca Media Monitoring Bank Mandiri (BMRI)</h1>
+  <div class="sub">Periode: {date_str} &nbsp;\xb7&nbsp; Sumber: Talkwalker \xb7 Google Alerts \xb7 Podcast</div>
+  <div class="upd">Auto-refresh setiap 10 menit &nbsp;\xb7&nbsp; Terakhir diperbarui: {now_str}</div>
+</header>
 
-function setFilter(btn,days){
-  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  currentDays=days;
-  try{render(days);}catch(e){gi('filter-info').textContent='Error: '+e.message;}
-}
+<div class="click-legend">
+  <span><span class="cl-dot" style="background:#cbd5e1"></span>Judul terang = ada link, bisa diklik</span>
+  <span><span class="cl-dot" style="background:#374151"></span>Judul abu-abu = tidak ada link</span>
+</div>
 
-function getCutoff(days){
-  const d=new Date();d.setDate(d.getDate()-days);return d.toISOString().split('T')[0];
-}
+<div class="cards">
+  <div class="card">
+    <div class="num" style="color:#94a3b8">{total}</div>
+    <div class="lbl">Total Artikel</div>
+  </div>
+  <div class="card">
+    <div class="num" style="color:#f87171">{len(negatif)}</div>
+    <div class="lbl">Berita Negatif</div>
+  </div>
+  <div class="card">
+    <div class="num" style="color:#4ade80">{len(positif)}</div>
+    <div class="lbl">Berita Positif</div>
+  </div>
+  <div class="card" style="border-color:{sent_color}33;background:{sent_bg}33">
+    <div class="num" style="color:{sent_color}">{pct_pos}%</div>
+    <div class="lbl" style="color:{sent_color}">{sent_label}</div>
+  </div>
+</div>
 
-function render(days){
-  const arts=ALL.filter(a=>a.run_date>=getCutoff(days));
-  const neg=arts.filter(a=>a.sentiment==='negatif').sort((a,b)=>b.score-a.score);
-  const pos=arts.filter(a=>a.sentiment==='positif').sort((a,b)=>b.score-a.score);
-  const tot=arts.length,nN=neg.length,nP=pos.length;
-  const pP=tot?Math.round(nP/tot*100):0,pN=100-pP;
-  const sentColor=pP>=60?'#4ade80':(pP<40?'#f87171':'#fbbf24');
-  const sentLabel=pP>=60?'POSITIF ✅':(pP<40?'NEGATIF ⚠️':'NETRAL ⚡');
+{chart_block}
+{narasi_block}
 
-  // filter info
-  const dates=[...new Set(arts.map(a=>a.run_date))].sort();
-  const lbls={1:'Kemarin',7:'7 hari',30:'30 hari',90:'3 bulan',180:'6 bulan',365:'1 tahun'};
-  const info=days===1?(dates.length?'Data: '+fd(dates[dates.length-1]):'Tidak ada data')
-    :(lbls[days]||days+' hari')+' terakhir · '+dates.length+' hari data';
-  gi('filter-info').textContent=info;
+<div class="grid">
+  <div class="panel">
+    <h2 class="sec-title" style="color:#f87171">\U0001f534 Berita Negatif — Top {min(len(negatif),15)}</h2>
+    {article_cards(negatif, "#f87171")}
+  </div>
+  <div class="panel">
+    <h2 class="sec-title" style="color:#4ade80">\U0001f7e2 Berita Positif — Top {min(len(positif),15)}</h2>
+    {article_cards(positif, "#4ade80")}
+  </div>
+</div>
 
-  // stats cards
-  const srcSet=new Set(arts.map(a=>a.source).filter(Boolean));
-  gi('s-total').textContent=tot.toLocaleString('id');
-  gi('s-neg').textContent=nN.toLocaleString('id');
-  gi('s-pos').textContent=nP.toLocaleString('id');
-  gi('s-pct').textContent=pP+'%';gi('s-pct').style.color=sentColor;
-  gi('s-sources').textContent=srcSet.size.toLocaleString('id');
+<footer class="footer">
+  Powered by Claude AI (Anthropic) &nbsp;\xb7&nbsp; Talkwalker Alerts &nbsp;\xb7&nbsp; Google Alerts &nbsp;\xb7&nbsp; ListenNotes
+  &nbsp;&nbsp;|&nbsp;&nbsp; Update otomatis setiap hari pukul 07.00 WIB via GitHub Actions
+</footer>
 
-  // donut & legend
-  gi('dpct').textContent=pP+'%';gi('dpct').style.color=sentColor;
-  gi('dlbl').textContent=sentLabel;gi('dlbl').style.color=sentColor;
-  gi('leg-neg').textContent='Negatif '+nN+' ('+pN+'%)';
-  gi('leg-pos').textContent='Positif '+nP+' ('+pP+'%)';
-  drawDonut(pP);
-
-  // tanggal data (terlama – terbaru) di bawah legend
-  if(dates.length){
-    const oldest=dates[0],newest=dates[dates.length-1];
-    gi('donut-range').innerHTML=oldest===newest
-      ?'📅 '+fd(oldest)
-      :'📅 '+fd(oldest)+'<br>– '+fd(newest);
-  }else{
-    gi('donut-range').textContent='Tidak ada data';
-  }
-
-  // per tipe media
-  const td={};
-  arts.forEach(a=>{const m=a.media_type||'News';if(!td[m])td[m]={t:0,n:0,p:0};td[m].t++;
-    if(a.sentiment==='negatif')td[m].n++;if(a.sentiment==='positif')td[m].p++;});
-  gi('tipe-rows').innerHTML=Object.entries(td).sort((a,b)=>b[1].t-a[1].t).map(([m,d])=>{
-    const c=TC[m]||'#8B949E';
-    return `<div class="tipe-row"><span><span class="mdot" style="background:${c}"></span>`
-      +`<span style="color:${c}">${esc(m)}</span></span>`
-      +`<span style="text-align:center;color:#e2e8f0">${d.t}</span>`
-      +`<span style="text-align:center;color:#f87171">${d.n||'·'}</span>`
-      +`<span style="text-align:center;color:#4ade80">${d.p||'·'}</span></div>`;
-  }).join('');
-
-  // media sources
-  const sc={},sn={},sp={};
-  arts.forEach(a=>{const s=a.source;if(!s)return;sc[s]=(sc[s]||0)+1;
-    if(a.sentiment==='negatif')sn[s]=(sn[s]||0)+1;
-    if(a.sentiment==='positif')sp[s]=(sp[s]||0)+1;});
-  gi('src-scroll').innerHTML=Object.entries(sc).sort((a,b)=>b[1]-a[1]).slice(0,20).map(([s,c])=>
-    `<div class="mrow"><span class="msrc" title="${esc(s)}">${esc(s)}</span>`
-    +`<span class="mtot">${c}</span><span class="mneg">${sn[s]||'·'}</span>`
-    +`<span class="mpos">${sp[s]||'·'}</span></div>`
-  ).join('');
-
-  // articles
-  renderArts(neg.slice(0,10),'neg-list','neg-count','#f87171');
-  renderArts(pos.slice(0,10),'pos-list','pos-count','#4ade80');
-
-  // narrative — dinamis sesuai periode
-  renderNarrative(days,arts,neg,pos,dates);
-}
-
-function renderNarrative(days,arts,neg,pos,dates){
-  const nBox=gi('narrative-box');
-  const oldest=dates[0]||'',newest=dates[dates.length-1]||'';
-
-  if(!arts.length){nBox.style.display='none';return;}
-  nBox.style.display='';
-
-  // Cari narasi dari NARRATIVES dict (per tanggal)
-  if(days===1 && dates.length===1){
-    const d=dates[0];
-    const stored=NARRATIVES[d]||(d===RUN_DATE?NAR:null);
-    if(stored){
-      gi('nar-day').textContent=fd(d);
-      gi('nar-text').innerHTML=stored.replace(/\n/g,'<br>');
-      return;
-    }
-  }
-
-  // Cek apakah ada narasi harian yang tersimpan dalam rentang ini
-  const availNar=dates.filter(d=>NARRATIVES[d]||(d===RUN_DATE&&NAR));
-  if(days===1 && availNar.length===0 && NAR){
-    gi('nar-day').textContent=fd(RUN_DATE);
-    gi('nar-text').innerHTML=NAR.replace(/\n/g,'<br>');
-    return;
-  }
-
-  // === Auto-generate ringkasan agregat untuk periode multi-hari ===
-  const tot=arts.length,nN=neg.length,nP=pos.length;
-  const pP=tot?Math.round(nP/tot*100):0,pN=100-pP;
-  const lblPeriode={7:'7 hari',30:'30 hari',90:'3 bulan',180:'6 bulan',365:'1 tahun'}[days]||(days+' hari');
-  const dateRange=oldest===newest?fd(oldest):(fd(oldest)+' – '+fd(newest));
-
-  // Top sources
-  const srcC={};arts.forEach(a=>{if(a.source)srcC[a.source]=(srcC[a.source]||0)+1;});
-  const topSrc=Object.entries(srcC).sort((a,b)=>b[1]-a[1]).slice(0,3)
-    .map(([s,c])=>s+' ('+c+')').join(', ');
-
-  let nar=`Dalam <strong>${lblPeriode}</strong> terakhir (${dateRange}), terpantau `
-    +`<strong>${tot}</strong> artikel berita tentang Bank Mandiri dari `
-    +`<strong>${Object.keys(srcC).length}</strong> sumber media.<br><br>`;
-  nar+=`Sentimen: <span style="color:#4ade80;font-weight:600">${pP}% positif</span> (${nP} artikel) `
-    +`dan <span style="color:#f87171;font-weight:600">${pN}% negatif</span> (${nN} artikel).<br><br>`;
-  if(topSrc) nar+=`Media paling aktif: ${esc(topSrc)}.<br><br>`;
-  if(neg.length) nar+=`Berita negatif skor tertinggi: <em>"${esc(neg[0].title)}"</em>`
-    +` — ${esc(neg[0].source)} (${fd(neg[0].run_date)}).<br>`;
-  if(pos.length) nar+=`Berita positif skor tertinggi: <em>"${esc(pos[0].title)}"</em>`
-    +` — ${esc(pos[0].source)} (${fd(pos[0].run_date)}).`;
-
-  // Tampilkan narasi AI harian yang tersedia (jika ada)
-  if(availNar.length>0){
-    nar+='<br><br><details style="margin-top:6px"><summary style="cursor:pointer;color:#60a5fa;font-size:.73rem">📋 Narasi harian tersedia ('+availNar.length+' hari) — klik untuk lihat</summary>';
-    availNar.sort((a,b)=>b.localeCompare(a)).slice(0,10).forEach(d=>{
-      const txt=NARRATIVES[d]||(d===RUN_DATE?NAR:'');
-      if(txt) nar+='<div style="margin-top:10px;padding:8px;background:#080d1a;border-radius:6px;border-left:3px solid #3b82f6">'
-        +'<div style="font-size:.65rem;color:#60a5fa;margin-bottom:4px">'+fd(d)+'</div>'
-        +'<div style="font-size:.74rem;color:#94a3b8">'+txt.replace(/\n/g,'<br>')+'</div></div>';
-    });
-    nar+='</details>';
-  }
-
-  gi('nar-day').textContent=dateRange;
-  gi('nar-text').innerHTML=nar;
-}
-
-function renderArts(items,listId,countId,color){
-  gi(countId).textContent='('+items.length+' artikel)';
-  if(!items.length){gi(listId).innerHTML='<div class="empty">Tidak ada berita dalam kategori ini</div>';return;}
-  gi(listId).innerHTML=items.map(a=>{
-    const w=(a.score/10*100).toFixed(0);
-    const d=a.run_date?fd(a.run_date):'';
-    const th=a.link?`<a class="atitle-link" href="${esc(a.link)}" target="_blank" rel="noopener">${esc(a.title)}</a>`
-      :`<span class="atitle-nolink">${esc(a.title)}</span>`;
-    const lh=a.link?`<a class="alink" href="${esc(a.link)}" target="_blank" rel="noopener">↗ Buka artikel</a>`:'';
-    return `<div class="acard"><div class="ascore" style="color:${color}">${a.score}</div>`
-      +`<div class="acontent"><div class="adate">${d}</div>${th}`
-      +`<div class="asrc">${esc(a.source||'')} <span class="areason">${esc(a.reason||'')}</span></div>`
-      +`<div class="abar"><div class="afill" style="width:${w}%;background:${color}"></div></div>${lh}</div></div>`;
-  }).join('');
-}
-
-function drawDonut(pctPos){
-  const cv=document.getElementById('donutCanvas');if(!cv)return;
-  const ctx=cv.getContext('2d');
-  const cx=60,cy=60,r=54,ir=34,gap=0.05,s0=-Math.PI/2;
-  const pn=(100-pctPos)/100,pp=pctPos/100;
-  function arc(s,en,col){ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,s,en);
-    ctx.arc(cx,cy,ir,en,s,true);ctx.closePath();ctx.fillStyle=col;ctx.fill();}
-  ctx.fillStyle='#0f172a';ctx.fillRect(0,0,120,120);
-  if(pn>0.01)arc(s0,s0+Math.PI*2*pn-gap,'#f87171');
-  if(pp>0.01)arc(s0+Math.PI*2*pn+gap,s0+Math.PI*2-gap,'#4ade80');
-}
-
-function gi(id){return document.getElementById(id);}
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function fd(iso){if(!iso)return'';const[y,m,d]=iso.split('-');
-  const mn=['','Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-  return parseInt(d)+' '+(mn[parseInt(m)]||m)+' '+y;}
-
-// Render data EMBEDDED langsung (synchronous) — pastikan ada sesuatu yang tampil
-try{render(1);}catch(e){if(gi('filter-info'))gi('filter-info').textContent='Error: '+e.message;}
-// Load articles.json + narratives.json di background, re-render setelah dapat data
-init();
-"""
-
-    # ── Build HTML via string concatenation (avoids f-string brace conflicts) ─
-    html = (
-        '<!DOCTYPE html>\n<html lang="id">\n<head>\n'
-        '<meta charset="UTF-8">\n'
-        '<meta name="viewport" content="width=device-width,initial-scale=1">\n'
-        '<meta http-equiv="refresh" content="600">\n'
-        + f'<title>Media Monitoring BMRI — {date_str}</title>\n'
-        + '<style>\n' + css + '\n</style>\n</head>\n<body>\n\n'
-        + '<header class="hdr">\n'
-        '  <h1>\U0001f4ca Media Monitoring Bank Mandiri (BMRI)</h1>\n'
-        + f'  <div class="sub">Sumber: Talkwalker \xb7 Google Alerts \xb7 Podcast'
-          f' &nbsp;\xb7&nbsp; Auto-refresh setiap 10 menit</div>\n'
-        + f'  <div class="upd">Terakhir diperbarui: {now_str}</div>\n'
-        + '</header>\n\n'
-        '<div class="click-legend">\n'
-        '  <span><span class="cl-dot" style="background:#cbd5e1"></span>'
-        'Judul terang = ada link, bisa diklik</span>\n'
-        '  <span><span class="cl-dot" style="background:#374151"></span>'
-        'Judul abu-abu = tidak ada link</span>\n'
-        '</div>\n\n'
-        '<div class="filter-bar">\n'
-        '  <span class="filter-label">⏱ Periode:</span>\n'
-        '  <button class="filter-btn active" onclick="setFilter(this,1)">Kemarin</button>\n'
-        '  <button class="filter-btn" onclick="setFilter(this,7)">7 Hari</button>\n'
-        '  <button class="filter-btn" onclick="setFilter(this,30)">30 Hari</button>\n'
-        '  <button class="filter-btn" onclick="setFilter(this,90)">3 Bulan</button>\n'
-        '  <button class="filter-btn" onclick="setFilter(this,180)">6 Bulan</button>\n'
-        '  <button class="filter-btn" onclick="setFilter(this,365)">1 Tahun</button>\n'
-        '  <div class="filter-divider"></div>\n'
-        '  <span class="filter-info" id="filter-info">Memuat data...</span>\n'
-        '</div>\n\n'
-        '<div class="stats-row">\n'
-        '  <div class="stat-card"><div class="stat-num" style="color:#94a3b8" id="s-total">—</div>'
-        '<div class="stat-lbl">Total Artikel</div></div>\n'
-        '  <div class="stat-card"><div class="stat-num" style="color:#f87171" id="s-neg">—</div>'
-        '<div class="stat-lbl">Negatif</div></div>\n'
-        '  <div class="stat-card"><div class="stat-num" style="color:#4ade80" id="s-pos">—</div>'
-        '<div class="stat-lbl">Positif</div></div>\n'
-        '  <div class="stat-card"><div class="stat-num" id="s-pct">—</div>'
-        '<div class="stat-lbl">Sentimen Positif</div></div>\n'
-        '  <div class="stat-card"><div class="stat-num" style="color:#60a5fa" id="s-sources">—</div>'
-        '<div class="stat-lbl">Media Sumber</div></div>\n'
-        '</div>\n\n'
-        '<div class="main-grid">\n\n'
-        '  <div class="left-panel">\n'
-        '    <div class="lsec">Sentimen Keseluruhan</div>\n'
-        '    <div class="donut-wrap">\n'
-        '      <canvas id="donutCanvas" width="120" height="120"></canvas>\n'
-        '      <div class="donut-center">'
-        '<div class="dpct" id="dpct">—</div>'
-        '<div class="dlbl" id="dlbl">Memuat...</div></div>\n'
-        '    </div>\n'
-        '    <div class="leg">\n'
-        '      <div class="leg-r"><div class="ldot" style="background:#f87171"></div>'
-        '<span style="color:#f87171" id="leg-neg">Negatif —</span></div>\n'
-        '      <div class="leg-r"><div class="ldot" style="background:#4ade80"></div>'
-        '<span style="color:#4ade80" id="leg-pos">Positif —</span></div>\n'
-        '    </div>\n'
-        '    <div class="donut-range" id="donut-range">—</div>\n'
-        '    <hr class="divider">\n'
-        '    <div class="tipe-hdr"><span>Tipe</span>'
-        '<span style="text-align:center">Ttl</span>'
-        '<span style="color:#f87171;text-align:center">N</span>'
-        '<span style="color:#4ade80;text-align:center">P</span></div>\n'
-        '    <div id="tipe-rows"></div>\n'
-        '    <hr class="divider">\n'
-        '    <div class="media-sec">Media Terpantau</div>\n'
-        '    <div class="mhdr"><span>Sumber</span>'
-        '<span style="text-align:center">Ttl</span>'
-        '<span style="color:#f87171;text-align:center">N</span>'
-        '<span style="color:#4ade80;text-align:center">P</span></div>\n'
-        '    <div class="src-scroll" id="src-scroll"></div>\n'
-        '  </div>\n\n'
-        '  <div class="art-panel">\n'
-        '    <div class="art-hdr" style="color:#f87171">▼ NEGATIF'
-        ' &nbsp;<span id="neg-count"></span></div>\n'
-        '    <div id="neg-list"></div>\n'
-        '  </div>\n\n'
-        '  <div class="art-panel">\n'
-        '    <div class="art-hdr" style="color:#4ade80">▲ POSITIF'
-        ' &nbsp;<span id="pos-count"></span></div>\n'
-        '    <div id="pos-list"></div>\n'
-        '  </div>\n\n'
-        '</div>\n\n'
-        '<div class="narrative-box" id="narrative-box">\n'
-        '  <div class="ntitle">\U0001f4cb Ringkasan Naratif Eksekutif'
-        ' &nbsp;<small id="nar-day" style="font-weight:400;color:#64748b;font-size:.68rem"></small></div>\n'
-        '  <div class="narrative-text" id="nar-text"></div>\n'
-        '</div>\n\n'
-        '<footer class="footer">\n'
-        '  Powered by Claude AI (Anthropic) &nbsp;\xb7&nbsp;'
-        ' Talkwalker \xb7 Google Alerts \xb7 ListenNotes\n'
-        '  &nbsp;\xb7&nbsp; Data historis tersimpan hingga 1 tahun'
-        ' &nbsp;\xb7&nbsp; Update otomatis pukul 07.00 WIB\n'
-        '</footer>\n\n'
-        '<script>\n'
-        + f'const EMBEDDED={embedded_json};\n'
-        + f'const NAR=`{nar_safe}`;\n'
-        + f"const RUN_DATE='{run_date}';\n"
-        + js_logic
-        + '</script>\n</body>\n</html>'
-    )
+</body>
+</html>"""
     return html
 
 
