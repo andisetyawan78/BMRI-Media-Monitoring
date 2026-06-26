@@ -1149,11 +1149,23 @@ def build_html_email(articles, date_str, chart_path, narrative=None):
         html = ""
         for i, a in enumerate(items, 1):
             bar_width = int(a["score"] * 10)
+            link = a.get("link", "").strip()
+            if link:
+                title_cell = (
+                    f'<a href="{link}" target="_blank" rel="noopener" '
+                    f'style="font-weight:600;color:#1d4ed8;font-size:13px;line-height:1.4;'
+                    f'text-decoration:none">{a["title"]} ↗</a>'
+                )
+            else:
+                title_cell = (
+                    f'<span style="font-weight:600;color:#1a1a1a;font-size:13px;'
+                    f'line-height:1.4">{a["title"]}</span>'
+                )
             html += f"""
             <tr style="border-bottom:1px solid #f0f0f0">
               <td style="padding:10px 8px;text-align:center;font-weight:700;color:{color};font-size:15px">{a['score']}</td>
               <td style="padding:10px 8px">
-                <div style="font-weight:600;color:#1a1a1a;font-size:13px;line-height:1.4">{a['title']}</div>
+                <div>{title_cell}</div>
                 <div style="color:#666;font-size:11px;margin-top:4px">{a.get('reason','')}</div>
                 <div style="background:#eee;border-radius:3px;height:4px;margin-top:6px;overflow:hidden">
                   <div style="background:{color};width:{bar_width}%;height:4px;border-radius:3px"></div>
@@ -1529,7 +1541,7 @@ def generate_tv_dashboard(articles, date_str, chart_path, narrative=None):
             title_html = (
                 f'<a class="atitle-link" href="{link}" target="_blank" rel="noopener">{a.get("title","")}</a>'
                 if link else
-                f'<span>{a.get("title","")}</span>'
+                f'<span class="atitle-nolink">{a.get("title","")}</span>'
             )
             link_html = (
                 f'<a class="alink" href="{link}" target="_blank" rel="noopener">🔗 Buka artikel</a>'
@@ -1550,6 +1562,32 @@ def generate_tv_dashboard(articles, date_str, chart_path, narrative=None):
               </div>
             </div>"""
         return html
+
+    # Hitung jumlah artikel per sumber media
+    from collections import Counter
+    _src_tot = Counter()
+    _src_neg = Counter()
+    _src_pos = Counter()
+    for _a in articles:
+        _src = _a.get("source", "")
+        if not _src:
+            continue
+        _src_tot[_src] += 1
+        if _a.get("sentiment") == "negatif":
+            _src_neg[_src] += 1
+        elif _a.get("sentiment") == "positif":
+            _src_pos[_src] += 1
+    _media_rows = ""
+    for _src, _cnt in _src_tot.most_common(18):
+        _n = _src_neg.get(_src, 0)
+        _p = _src_pos.get(_src, 0)
+        _media_rows += f"""
+        <div class="mrow">
+          <span class="msrc" title="{_src}">{_src}</span>
+          <span class="mtot">{_cnt}</span>
+          <span class="mneg">{_n if _n else '·'}</span>
+          <span class="mpos">{_p if _p else '·'}</span>
+        </div>"""
 
     narasi_block = ""
     if narrative:
@@ -1594,7 +1632,7 @@ body{{background:#080d1a;color:#e2e8f0;font-family:'Segoe UI',Arial,sans-serif;p
 .narrative-box{{background:#0f172a;border:1px solid #1e293b;border-left:4px solid #3b82f6;border-radius:14px;padding:22px 26px;margin-bottom:26px}}
 .narrative-text{{font-size:1.05rem;line-height:1.85;color:#cbd5e1}}
 /* Articles grid */
-.grid{{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:26px}}
+.grid{{display:grid;grid-template-columns:200px 1fr 1fr;gap:20px;margin-bottom:26px}}
 .panel{{background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:20px}}
 .sec-title{{font-size:1.05rem;font-weight:700;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #1e293b}}
 /* Article card */
@@ -1602,7 +1640,7 @@ body{{background:#080d1a;color:#e2e8f0;font-family:'Segoe UI',Arial,sans-serif;p
 .acard:last-child{{border-bottom:none}}
 .ascore{{font-size:1.7rem;font-weight:800;min-width:38px;text-align:center;line-height:1}}
 .acontent{{flex:1}}
-.atitle{{font-size:.9rem;font-weight:600;color:#e2e8f0;line-height:1.4;margin-bottom:5px}}
+.atitle{{font-size:.9rem;font-weight:600;line-height:1.4;margin-bottom:5px}}
 .ameta{{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:5px}}
 .abadge{{font-size:.68rem;padding:2px 8px;border-radius:20px;font-weight:600}}
 .asrc{{font-size:.75rem;color:#475569}}
@@ -1610,10 +1648,25 @@ body{{background:#080d1a;color:#e2e8f0;font-family:'Segoe UI',Arial,sans-serif;p
 .abar{{background:#1e293b;border-radius:4px;height:3px;overflow:hidden}}
 .afill{{height:100%;border-radius:4px}}
 .empty{{color:#334155;text-align:center;padding:24px;font-style:italic}}
-.atitle-link{{color:#e2e8f0;text-decoration:none}}
-.atitle-link:hover{{color:#93c5fd;text-decoration:underline}}
+.atitle-link{{color:#cbd5e1;text-decoration:none;transition:color .15s}}
+.atitle-link:hover{{color:#93c5fd;text-decoration:underline;text-underline-offset:3px}}
+.atitle-link::after{{content:'↗';font-size:.7em;opacity:0;margin-left:3px;color:#60a5fa;transition:opacity .15s}}
+.atitle-link:hover::after{{opacity:1}}
+.atitle-nolink{{color:#374151}}
 .alink{{display:inline-block;margin-top:5px;font-size:.73rem;color:#60a5fa;text-decoration:none;padding:2px 8px;border:1px solid #1d4ed8;border-radius:12px}}
 .alink:hover{{background:#1d4ed833;color:#93c5fd}}
+/* Media sources panel */
+.grid{{display:grid;grid-template-columns:200px 1fr 1fr;gap:20px;margin-bottom:26px}}
+.media-panel{{background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:16px;overflow-y:auto;max-height:900px}}
+.media-panel-title{{font-size:.78rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #1e293b}}
+.mhdr,.mrow{{display:grid;grid-template-columns:1fr 26px 22px 22px;gap:4px;align-items:center;padding:0 6px}}
+.mhdr{{font-size:9px;color:#334155;font-weight:700;margin-bottom:3px}}
+.mhdr span:not(:first-child){{text-align:center}}
+.mrow{{background:#080d1a;border-radius:5px;padding:5px 6px;margin-bottom:3px}}
+.msrc{{font-size:9.5px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.mtot{{font-size:11px;font-weight:700;color:#e2e8f0;text-align:center}}
+.mneg{{font-size:10px;color:#f87171;text-align:center}}
+.mpos{{font-size:10px;color:#4ade80;text-align:center}}
 /* Footer */
 .footer{{text-align:center;color:#1e293b;font-size:.8rem;padding-top:20px;border-top:1px solid #1e293b}}
 /* TV / large screen */
@@ -1624,6 +1677,7 @@ body{{background:#080d1a;color:#e2e8f0;font-family:'Segoe UI',Arial,sans-serif;p
   .atitle{{font-size:.95rem}}
   .ascore{{font-size:2rem}}
   .narrative-text{{font-size:1.1rem}}
+  .grid{{grid-template-columns:220px 1fr 1fr}}
 }}
 </style>
 </head>
@@ -1658,10 +1712,22 @@ body{{background:#080d1a;color:#e2e8f0;font-family:'Segoe UI',Arial,sans-serif;p
 {narasi_block}
 
 <div class="grid">
+  <!-- Kolom kiri: Media Terpantau -->
+  <div class="media-panel">
+    <div class="media-panel-title">📡 Media Terpantau</div>
+    <div class="mhdr">
+      <span>Sumber</span><span style="text-align:center">Ttl</span>
+      <span style="color:#f87171;text-align:center">N</span>
+      <span style="color:#4ade80;text-align:center">P</span>
+    </div>
+    {_media_rows}
+  </div>
+  <!-- Kolom tengah: Negatif -->
   <div class="panel">
     <h2 class="sec-title" style="color:#f87171">🔴 Berita Negatif — Top {min(len(negatif),15)}</h2>
     {article_cards(negatif, "#f87171")}
   </div>
+  <!-- Kolom kanan: Positif -->
   <div class="panel">
     <h2 class="sec-title" style="color:#4ade80">🟢 Berita Positif — Top {min(len(positif),15)}</h2>
     {article_cards(positif, "#4ade80")}
