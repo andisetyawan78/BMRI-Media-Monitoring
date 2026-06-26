@@ -215,10 +215,11 @@ def html_to_text(html):
 def extract_talkwalker_links(html):
     """
     Ekstrak semua link artikel dari HTML Talkwalker email.
-    Talkwalker membungkus link artikel dalam redirect URL mereka sendiri
-    (https://click.talkwalker.com/...&url=https%3A%2F%2Faktual.id%2F...),
-    jadi kita ekstrak URL asli dari parameter redirect.
-    Return dict: {anchor_text_normalized -> url}
+    Returns: list of (anchor_normalized, anchor_words_set, url)
+
+    Talkwalker membungkus link dalam redirect URL-nya sendiri dengan
+    berbagai format parameter (url=, u=, link=, dst.), sehingga kita
+    coba semua kemungkinan untuk mengekstrak URL artikel asli.
     """
     from urllib.parse import unquote
     tag_re  = re.compile(r"<[^>]+>")
@@ -226,46 +227,109 @@ def extract_talkwalker_links(html):
         r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
         re.DOTALL | re.IGNORECASE,
     )
-    # Pola internal Talkwalker yang harus dilewati sepenuhnya
     SKIP_INTERNAL = [
         "unsubscribe", "mailto:", "javascript:", "tell-a-friend",
         "manage-alert", "/account", "delete-alert",
-        "facebook.com", "twitter.com", "linkedin.com",
+        "facebook.com", "linkedin.com",
     ]
-    link_map = {}
+
+    links = []  # list of (anchor_normalized, anchor_words_set, url)
+
     for m in link_re.finditer(html):
         url    = m.group(1).strip()
         anchor = tag_re.sub("", m.group(2)).strip()
         anchor = re.sub(r"\s+", " ", anchor)
-        if not url.startswith("http") or not anchor or len(anchor) < 8:
+
+        if not url.startswith("http") or not anchor or len(anchor) < 6:
             continue
         if any(s in url.lower() for s in SKIP_INTERNAL):
             continue
 
-        # Talkwalker redirect → ekstrak URL artikel asli dari parameter
+        # Talkwalker redirect → coba berbagai format parameter
         if "talkwalker.com" in url.lower():
+            # Format 1: ?url=, &u=, &link=, &href=, &redirect=, &r=, &go=
             redirect_m = re.search(
-                r"[?&](?:url|link|href|target|dest)=([^&\s\"']+)",
-                url, re.IGNORECASE
+                r"[?&](?:url|u|link|href|target|dest|redirect|r|go|to|click)"
+                r"=([^&\s\"'<>]+)",
+                url, re.IGNORECASE,
             )
             if redirect_m:
-                url = unquote(redirect_m.group(1))
-                if not url.startswith("http"):
+                candidate = unquote(redirect_m.group(1))
+                if candidate.startswith("http"):
+                    url = candidate
+                else:
                     continue
             else:
-                # Coba format Talkwalker yang encode seluruh URL di akhir
-                # Contoh: ...talkwalker.com/trk/...?https://katadata.co.id/...
-                direct_m = re.search(r"https?://(?!(?:www\.)?talkwalker\.com)[^\s\"']+", url)
-                if direct_m:
-                    url = direct_m.group(0)
-                else:
-                    continue  # Tidak bisa ekstrak, lewati
+                # Format 2: URL non-Talkwalker tersembunyi di path/query
+                direct_m = re.search(
+                    r"https?://(?!(?:www\.)?talkwalker)[^\s\"'&<>]+",
+                    url,
+                )
+                url = direct_m.group(0) if direct_m else None
+                if not url:
+                    continue
 
-        # Normalize anchor untuk matching dengan judul artikel
-        key = re.sub(r"[^\w\s]", "", anchor.lower()).strip()[:100]
-        if key:
-            link_map[key] = url
-    return link_map
+        # Abaikan anchor yang terlalu pendek/generik (tombol "Read more", dll.)
+        words = anchor.lower().split()
+        if len(words) < 3:
+            continue
+
+        anchor_norm  = re.sub(r"[^\w\s]", "", anchor.lower()).strip()[:120]
+        anchor_words = set(words)
+        links.append((anchor_norm, anchor_words, url))
+
+    return links
+
+
+def find_article_link(title, source, links):
+    """
+    Cari URL terbaik untuk sebuah artikel dari daftar links Talkwalker.
+    Strategi (berurutan):
+      1. Exact match setelah normalisasi
+      2. Prefix match (18 karakter pertama)
+      3. Word-overlap >= 65% kata judul ada di anchor
+      4. Fallback: domain sumber cocok dan unik
+    """
+    if not links:
+        return ""
+
+    title_key   = re.sub(r"[^\w\s]", "", title.lower()).strip()
+    title_words = set(title.lower().split())
+
+    # 1. Exact
+    for anorm, _, url in links:
+        if anorm == title_key:
+            return url
+
+    # 2. Prefix match (18 karakter)
+    if len(title_key) >= 12:
+        prefix = title_key[:18]
+        for anorm, _, url in links:
+            if anorm.startswith(prefix):
+                return url
+
+    # 3. Word-overlap
+    best_url, best_overlap = "", 0
+    for _, awords, url in links:
+        if len(title_words) < 3:
+            continue
+        overlap = len(title_words & awords)
+        ratio   = overlap / len(title_words)
+        if ratio >= 0.60 and overlap > best_overlap:
+            best_overlap = overlap
+            best_url = url
+    if best_url:
+        return best_url
+
+    # 4. Source domain fallback (hanya jika unik)
+    if source:
+        src_clean = re.sub(r"^www\.", "", source.lower()).split("/")[0]
+        matches = [url for _, _, url in links
+                   if src_clean.replace(".", "") in url.lower().replace(".", "")]
+        if len(matches) == 1:
+            return matches[0]
+
+    return ""
 
 
 def parse_articles(html_bodies):
@@ -296,8 +360,8 @@ def parse_articles(html_bodies):
     NOISE_RE = re.compile(r"^\d+\s+new results?$", re.IGNORECASE)
 
     for html in html_bodies:
-        # Ekstrak link map sebelum HTML di-strip ke plain text
-        link_map = extract_talkwalker_links(html)
+        # Ekstrak semua link dari HTML sebelum di-strip ke plain text
+        tw_links = extract_talkwalker_links(html)
 
         text = html_to_text(html)
         # Collapse tab/spasi ganda tapi jaga newline
@@ -390,18 +454,8 @@ def parse_articles(html_bodies):
             if any(s in title.lower() for s in skip_titles):
                 continue
 
-            # Cari URL yang cocok dari link_map
-            title_key = re.sub(r"[^\w\s]", "", title.lower()).strip()[:100]
-            article_link = ""
-            if title_key in link_map:
-                article_link = link_map[title_key]
-            else:
-                # Partial match: cari key yang paling mirip (prefix 25 karakter)
-                prefix = title_key[:25]
-                for key, url in link_map.items():
-                    if len(key) > 15 and key.startswith(prefix[:15]):
-                        article_link = url
-                        break
+            # Cari URL artikel menggunakan word-overlap matching
+            article_link = find_article_link(title, source.strip(), tw_links)
 
             articles.append({
                 "title"      : title,
@@ -421,7 +475,8 @@ def parse_articles(html_bodies):
             seen.add(key)
             unique.append(a)
 
-    print(f"[Parser] Total artikel unik: {len(unique)}")
+    n_with_link = sum(1 for a in unique if a.get("link"))
+    print(f"[Parser] Total artikel unik: {len(unique)} | Dengan link: {n_with_link}")
     return unique
 
 
@@ -741,11 +796,11 @@ Maksimal 200 kata total. Langsung ke inti, tanpa pembuka seperti "Berikut ringka
 # ─────────────────────────────────────────────
 def generate_chart(articles, output_path):
     """
-    Grafik 2-baris dark-theme:
-      Baris 1 (kiri): Donut sentimen keseluruhan
-      Baris 1 (kanan): Tabel distribusi per tipe media
-      Baris 2 (penuh): Diverging bar chart — label artikel di DALAM bar
-                       (bukan y-axis label, sehingga tidak overflow ke panel lain)
+    Grafik dark-theme 3-kolom:
+      Kiri (22%)   : Donut sentimen + tabel distribusi media
+      Tengah (37%) : Top artikel NEGATIF (judul di atas bar)
+      Kanan (37%)  : Top artikel POSITIF (judul di atas bar)
+    Menggunakan fig.add_axes() untuk posisi presisi tanpa overlap GridSpec.
     """
     BG      = "#0D1117"
     CARD_BG = "#161B22"
@@ -769,67 +824,74 @@ def generate_chart(articles, output_path):
     pct_pos = round(n_pos / total * 100) if total else 0
     pct_neg = 100 - pct_pos
 
-    negatif  = negatif_all[:12]
-    positif  = positif_all[:12]
+    negatif  = negatif_all[:10]
+    positif  = positif_all[:10]
     yesterday = (datetime.date.today() - datetime.timedelta(days=1)).strftime("%d %B %Y")
 
-    n_bars = max(len(negatif), len(positif), 6)
-    fig_h  = max(13, n_bars * 0.65 + 7)
+    # Tinggi gambar: setiap artikel butuh 2 baris (judul + bar), min 10"
+    n_rows = max(len(negatif), len(positif), 5)
+    fig_h  = max(10, n_rows * 0.95 + 4.5)
 
-    fig = plt.figure(figsize=(22, fig_h), facecolor=BG)
-
-    # 2-baris: baris 0 = donut+tabel (30% tinggi), baris 1 = bar chart (70%)
-    gs = GridSpec(
-        2, 2,
-        figure=fig,
-        width_ratios=[1, 1.5],
-        height_ratios=[2.2, 5],
-        hspace=0.35,
-        wspace=0.28,
-        left=0.03, right=0.97,
-        top=0.93, bottom=0.06,
-    )
+    fig = plt.figure(figsize=(26, fig_h), facecolor=BG)
 
     # ── Judul ────────────────────────────────────────────
-    fig.text(0.5, 0.97,
+    fig.text(0.5, 0.975,
              f"Media Monitoring Bank Mandiri (BMRI)  —  {yesterday}",
-             ha="center", fontsize=15, fontweight="bold", color=TEXT_C)
-    fig.text(0.5, 0.955,
+             ha="center", fontsize=16, fontweight="bold", color=TEXT_C)
+    fig.text(0.5, 0.958,
              f"Total {total} artikel dianalisis oleh Claude AI",
-             ha="center", fontsize=9, color=MUTED_C)
+             ha="center", fontsize=9.5, color=MUTED_C)
+
+    # ── Posisi panel (figure fraction: left, bottom, width, height) ──────
+    # Kiri: x=0.02..0.23  (donut atas, tabel media bawah)
+    # Neg : x=0.26..0.61
+    # Pos : x=0.64..0.97
+    BODY_B = 0.07    # bottom padding
+    BODY_T = 0.93    # top (di bawah judul)
+    BODY_H = BODY_T - BODY_B
+
+    # Donut: 55% atas dari panel kiri
+    ax_donut = fig.add_axes([0.02, BODY_B + BODY_H * 0.42, 0.21, BODY_H * 0.54])
+    ax_donut.set_facecolor(CARD_BG)
+
+    # Tabel media: 40% bawah dari panel kiri
+    ax_tbl = fig.add_axes([0.02, BODY_B, 0.21, BODY_H * 0.40])
+    ax_tbl.set_facecolor(CARD_BG)
+    ax_tbl.axis("off")
+
+    # Negatif & Positif bar panels
+    ax_neg = fig.add_axes([0.26, BODY_B, 0.35, BODY_H])
+    ax_neg.set_facecolor(CARD_BG)
+    ax_pos = fig.add_axes([0.63, BODY_B, 0.35, BODY_H])
+    ax_pos.set_facecolor(CARD_BG)
 
     # ════════════════════════════════════════════════════
-    # DONUT — baris 0, kolom 0
+    # DONUT
     # ════════════════════════════════════════════════════
-    ax_donut = fig.add_subplot(gs[0, 0], facecolor=CARD_BG)
     overall_label = "POSITIF ✓" if pct_pos >= 60 else ("NEGATIF !" if pct_neg > 60 else "NETRAL ~")
     overall_color = POS_C if pct_pos >= 60 else (NEG_C if pct_neg > 60 else "#F0A500")
     ax_donut.pie(
         [n_neg, n_pos] if total else [1, 1],
         colors=[NEG_C, POS_C],
         startangle=90, counterclock=False,
-        wedgeprops=dict(width=0.40, edgecolor=CARD_BG, linewidth=3),
+        wedgeprops=dict(width=0.38, edgecolor=CARD_BG, linewidth=3),
     )
-    ax_donut.text(0,  0.12, f"{pct_pos}%", ha="center", va="center",
-                  fontsize=26, fontweight="bold", color=overall_color)
-    ax_donut.text(0, -0.20, overall_label, ha="center", va="center",
-                  fontsize=9, fontweight="bold", color=overall_color)
-    ax_donut.set_title("Sentimen Keseluruhan", fontsize=10, color=TEXT_C,
+    ax_donut.text(0,  0.10, f"{pct_pos}%", ha="center", va="center",
+                  fontsize=28, fontweight="bold", color=overall_color)
+    ax_donut.text(0, -0.24, overall_label, ha="center", va="center",
+                  fontsize=10, fontweight="bold", color=overall_color)
+    ax_donut.set_title("SENTIMEN KESELURUHAN", fontsize=9, color=MUTED_C,
                        fontweight="bold", pad=10)
     ax_donut.legend(
-        [f"Negatif  {n_neg} ({pct_neg}%)", f"Positif  {n_pos} ({pct_pos}%)"],
-        loc="lower center", bbox_to_anchor=(0.5, -0.06),
+        [f"Negatif  {n_neg} artikel ({pct_neg}%)",
+         f"Positif  {n_pos} artikel ({pct_pos}%)"],
+        loc="lower center", bbox_to_anchor=(0.5, -0.10),
         fontsize=9, framealpha=0, labelcolor=[NEG_C, POS_C],
     )
 
     # ════════════════════════════════════════════════════
-    # TABEL MEDIA — baris 0, kolom 1
+    # TABEL MEDIA
     # ════════════════════════════════════════════════════
-    ax_tbl = fig.add_subplot(gs[0, 1], facecolor=CARD_BG)
-    ax_tbl.axis("off")
-    ax_tbl.set_title("Distribusi per Tipe Media", fontsize=10, color=TEXT_C,
-                     fontweight="bold", pad=10)
-
     media_types = ["News", "Blog", "Twitter", "Google Alerts", "Podcast", "E-Commerce"]
     MTYPE_COLOR = {
         "News": "#58A6FF", "Blog": "#3FB950", "Twitter": "#1D9BF0",
@@ -843,21 +905,22 @@ def generate_chart(articles, output_path):
         neg_c = sum(1 for a in sub if a.get("sentiment") == "negatif")
         rows_data.append((mt, len(sub), neg_c, len(sub) - neg_c))
 
-    col_x   = [0.03, 0.58, 0.73, 0.88]
-    headers = ["Tipe Media", "Total", "Neg", "Pos"]
-    for xi, h in zip(col_x, headers):
-        ax_tbl.text(xi, 0.96, h, transform=ax_tbl.transAxes,
+    ax_tbl.set_title("DISTRIBUSI PER TIPE MEDIA", fontsize=9, color=MUTED_C,
+                     fontweight="bold", pad=8)
+    col_x = [0.03, 0.60, 0.74, 0.89]
+    for xi, h in zip(col_x, ["Tipe Media", "Total", "Neg", "Pos"]):
+        ax_tbl.text(xi, 0.97, h, transform=ax_tbl.transAxes,
                     fontsize=8.5, color=MUTED_C, fontweight="bold", va="top")
     ax_tbl.plot([0, 1], [0.90, 0.90], transform=ax_tbl.transAxes,
                 color=GRID_C, linewidth=0.8, clip_on=False)
 
-    step = 0.82 / max(len(rows_data), 1)
+    step = 0.84 / max(len(rows_data), 1)
     for r_i, (mt, tot, neg_c, pos_c) in enumerate(rows_data):
         y = 0.87 - r_i * step
         c = MTYPE_COLOR.get(mt, TEXT_C)
-        ax_tbl.text(col_x[0], y, mt,       transform=ax_tbl.transAxes,
+        ax_tbl.text(col_x[0], y, mt,         transform=ax_tbl.transAxes,
                     fontsize=9, color=c, va="center")
-        ax_tbl.text(col_x[1], y, str(tot), transform=ax_tbl.transAxes,
+        ax_tbl.text(col_x[1], y, str(tot),   transform=ax_tbl.transAxes,
                     fontsize=9, color=TEXT_C, va="center", ha="center")
         ax_tbl.text(col_x[2], y, str(neg_c), transform=ax_tbl.transAxes,
                     fontsize=9, color=NEG_C, va="center", ha="center")
@@ -865,90 +928,65 @@ def generate_chart(articles, output_path):
                     fontsize=9, color=POS_C, va="center", ha="center")
 
     # ════════════════════════════════════════════════════
-    # DIVERGING BAR CHART — baris 1, span kedua kolom
-    # Label artikel di DALAM bar → tidak overflow ke panel lain
+    # HELPER: Panel artikel (judul DI ATAS bar, skor di ujung bar)
     # ════════════════════════════════════════════════════
-    ax_bar = fig.add_subplot(gs[1, :], facecolor=CARD_BG)
+    def make_article_panel(ax, items, color, header, n_total):
+        ax.spines[:].set_visible(False)
+        ax.set_xlim(0, 11.5)
+        # Setiap artikel = 2 unit: 0–1 = judul+sumber, 1–2 = bar
+        n = len(items)
+        ax.set_ylim(0, n * 2 + 0.4)
+        ax.invert_yaxis()   # artikel teratas (skor tinggi) di atas
 
-    # Susun data: negatif dulu, spacer, lalu positif
-    bar_items = []   # (score_signed, color, title, source, category)
-    for a in negatif:
-        t = a["title"][:58] + "…" if len(a["title"]) > 58 else a["title"]
-        bar_items.append((-a.get("score", 0), NEG_C, t, a.get("source", "")[:15], "neg"))
-    if negatif and positif:
-        bar_items.append((0, BG, "", "", "space"))
-    for a in positif:
-        t = a["title"][:58] + "…" if len(a["title"]) > 58 else a["title"]
-        bar_items.append((a.get("score", 0), POS_C, t, a.get("source", "")[:15], "pos"))
+        ax.set_title(f"{header}   ({n_total} artikel)",
+                     fontsize=11, color=color, fontweight="bold", pad=12)
 
-    n     = len(bar_items)
-    y_pos = list(range(n))
-    scores_plot = [b[0] for b in bar_items]
-    colors_plot = [b[1] for b in bar_items]
+        for i, a in enumerate(items):
+            score = a.get("score", 0)
+            title = a["title"]
+            title_disp = title[:54] + "…" if len(title) > 54 else title
+            src   = a.get("source", "")[:22]
 
-    bars = ax_bar.barh(y_pos, scores_plot, color=colors_plot,
-                       height=0.72, zorder=3, edgecolor="none")
+            y_title = i * 2 + 0.45   # pusat baris judul
+            y_src   = i * 2 + 0.90   # pusat baris sumber
+            y_bar   = i * 2 + 1.45   # pusat bar
 
-    # Label di dalam bar + skor di ujung bar
-    for i, (bar, item) in enumerate(zip(bars, bar_items)):
-        s, c, title, src, cat = item
-        if cat == "space" or not title:
-            continue
-        score_val = abs(s)
-        # Skor di luar ujung bar
-        tip_x = bar.get_width()
-        ax_bar.text(tip_x + (0.25 if s > 0 else -0.25), i,
-                    str(score_val), va="center",
-                    ha="left" if s > 0 else "right",
-                    fontsize=9.5, color=c, fontweight="bold")
-        # Judul + sumber di dalam bar (anchor di garis tengah x=0)
-        label_x = 0.2  if s > 0 else -0.2
-        ha_lbl  = "left" if s > 0 else "right"
-        ax_bar.text(label_x, i,
-                    f"{title}   [{src}]",
-                    va="center", ha=ha_lbl,
-                    fontsize=7.8, color="white",
-                    clip_on=True)
+            # Judul artikel
+            ax.text(0.15, y_title, title_disp,
+                    va="center", ha="left", fontsize=8.5,
+                    color=TEXT_C, clip_on=True)
+            # Sumber
+            ax.text(0.15, y_src, f"[{src}]",
+                    va="center", ha="left", fontsize=7.5,
+                    color=MUTED_C, clip_on=True)
+            # Bar
+            ax.barh(y_bar, score, height=0.45,
+                    color=color, alpha=0.88, zorder=3)
+            # Skor di ujung bar (tidak tumpuk karena bar dan judul di baris berbeda)
+            ax.text(score + 0.25, y_bar, str(score),
+                    va="center", ha="left", fontsize=10.5,
+                    color=color, fontweight="bold")
+            # Separator antar artikel
+            if i < n - 1:
+                ax.axhline(y=i * 2 + 2.0, color=GRID_C,
+                           linewidth=0.6, zorder=1)
 
-    # Badge section "NEGATIF" dan "POSITIF"
-    if negatif:
-        mid_neg = (len(negatif) - 1) / 2
-        ax_bar.text(-11.7, mid_neg,
-                    f"▼ NEGATIF  ({n_neg} artikel)",
-                    ha="left", va="center",
-                    fontsize=9, color=NEG_C, fontweight="bold")
-    if positif:
-        spacer  = 1 if negatif else 0
-        mid_pos = len(negatif) + spacer + (len(positif) - 1) / 2
-        ax_bar.text(11.7, mid_pos,
-                    f"▲ POSITIF  ({n_pos} artikel)",
-                    ha="right", va="center",
-                    fontsize=9, color=POS_C, fontweight="bold")
+        # x-axis
+        ax.tick_params(left=False, labelleft=False)
+        ax.set_xticks([2, 4, 6, 8, 10])
+        ax.tick_params(axis="x", colors=MUTED_C, labelsize=8.5, length=4)
+        ax.set_xlabel("→  Skor Sentimen", fontsize=9, color=MUTED_C, labelpad=8)
+        ax.grid(axis="x", color=GRID_C, linewidth=0.5, zorder=0)
 
-    ax_bar.set_yticks([])          # Tidak ada y-label — judul sudah di dalam bar
-    ax_bar.set_xlim(-12.5, 12.5)
-    ax_bar.set_xticks([-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10])
-    ax_bar.set_xticklabels(
-        ["10", "8", "6", "4", "2", "0", "2", "4", "6", "8", "10"],
-        fontsize=9, color=MUTED_C,
-    )
-    ax_bar.axvline(0, color=MUTED_C, linewidth=1.4, zorder=4)
-    ax_bar.grid(axis="x", color=GRID_C, linewidth=0.6, zorder=1)
-    ax_bar.spines[:].set_visible(False)
-    ax_bar.tick_params(axis="x", colors=MUTED_C, length=3)
-    ax_bar.set_title("Top Artikel — Skor Sentimen (1–10)",
-                     fontsize=11, color=TEXT_C, fontweight="bold", pad=12)
-    ax_bar.set_xlabel(
-        "◄  Skor Negatif      |      Skor Positif  ►",
-        fontsize=9, color=MUTED_C, labelpad=8,
-    )
+    make_article_panel(ax_neg, negatif, NEG_C, "▼  NEGATIF", n_neg)
+    make_article_panel(ax_pos, positif, POS_C, "▲  POSITIF", n_pos)
 
-    # Footer
+    # ── Footer ───────────────────────────────────────────
     fig.text(
-        0.5, 0.025,
+        0.5, 0.028,
         "Analisis otomatis oleh Claude AI (Anthropic)  ·  "
         "Sumber: Talkwalker Alerts · Google Alerts · ListenNotes",
-        ha="center", fontsize=8, color=MUTED_C,
+        ha="center", fontsize=8.5, color=MUTED_C,
     )
 
     plt.savefig(output_path, dpi=150, bbox_inches="tight", facecolor=BG)
