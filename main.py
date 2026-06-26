@@ -1501,109 +1501,134 @@ def generate_excel_report(articles, date_str):
 # ─────────────────────────────────────────────
 # 8b. GENERATE TV DASHBOARD (GitHub Pages)
 # ─────────────────────────────────────────────
-def generate_tv_dashboard(articles, date_str, chart_path, narrative=None):
+def generate_tv_dashboard(articles, date_str, chart_path=None, narrative=None):
     """
     Generate HTML dashboard TV-friendly untuk GitHub Pages.
-    Chart di-embed sebagai base64 sehingga file HTML berdiri sendiri.
+    Layout: 3-kolom (kiri: sentimen+media, tengah: negatif, kanan: positif).
+    Ringkasan naratif di bawah grid. Donut chart dirender via canvas JS.
     Return string HTML.
     """
+    from collections import Counter
+
     negatif = sorted([a for a in articles if a.get("sentiment") == "negatif"],
                      key=lambda x: -x.get("score", 0))
     positif = sorted([a for a in articles if a.get("sentiment") == "positif"],
                      key=lambda x: -x.get("score", 0))
     total   = len(articles)
-    pct_pos = round(len(positif) / total * 100) if total else 0
+    n_neg   = len(negatif)
+    n_pos   = len(positif)
+    pct_pos = round(n_pos / total * 100) if total else 0
+    pct_neg = 100 - pct_pos
 
     if pct_pos >= 60:
-        sent_color, sent_label, sent_bg = "#4ade80", "POSITIF ✅", "#14532d"
+        sent_color, sent_label = "#4ade80", "POSITIF ✅"
     elif pct_pos < 40:
-        sent_color, sent_label, sent_bg = "#f87171", "NEGATIF ⚠️", "#7f1d1d"
+        sent_color, sent_label = "#f87171", "NEGATIF ⚠️"
     else:
-        sent_color, sent_label, sent_bg = "#fbbf24", "NETRAL ⚡", "#78350f"
-
-    # Embed chart sebagai base64
-    chart_b64 = ""
-    try:
-        with open(chart_path, "rb") as f:
-            chart_b64 = base64.b64encode(f.read()).decode()
-    except Exception:
-        pass
+        sent_color, sent_label = "#fbbf24", "NETRAL ⚡"
 
     now_str = datetime.datetime.now().strftime("%d %B %Y, %H:%M WIB")
 
+    # Per tipe media
+    TYPE_COLOR = {
+        "News": "#58A6FF", "Blog": "#4ade80", "Twitter": "#1D9BF0",
+        "Podcast": "#BC8CFF", "Google Alerts": "#F0A500", "E-Commerce": "#f87171",
+    }
+    type_data = {}
+    for a in articles:
+        mt = a.get("media_type", "News")
+        if mt not in type_data:
+            type_data[mt] = {"tot": 0, "neg": 0, "pos": 0}
+        type_data[mt]["tot"] += 1
+        if a.get("sentiment") == "negatif":
+            type_data[mt]["neg"] += 1
+        elif a.get("sentiment") == "positif":
+            type_data[mt]["pos"] += 1
+
+    tipe_rows_html = ""
+    for mt, d in sorted(type_data.items(), key=lambda x: -x[1]["tot"]):
+        tc = TYPE_COLOR.get(mt, "#8B949E")
+        tipe_rows_html += (
+            f'<div class="tipe-row">'
+            f'<span><span class="mdot" style="background:{tc}"></span>'
+            f'<span style="color:{tc}">{mt}</span></span>'
+            f'<span style="text-align:center;color:#e2e8f0">{d["tot"]}</span>'
+            f'<span style="text-align:center;color:#f87171">{d["neg"]}</span>'
+            f'<span style="text-align:center;color:#4ade80">{d["pos"]}</span>'
+            f'</div>'
+        )
+
+    # Media per sumber
+    src_tot = Counter()
+    src_neg_c = Counter()
+    src_pos_c = Counter()
+    for a in articles:
+        src = a.get("source", "")
+        if not src:
+            continue
+        src_tot[src] += 1
+        if a.get("sentiment") == "negatif":
+            src_neg_c[src] += 1
+        elif a.get("sentiment") == "positif":
+            src_pos_c[src] += 1
+
+    media_rows_html = ""
+    for src, cnt in src_tot.most_common(20):
+        n = src_neg_c.get(src, 0)
+        p = src_pos_c.get(src, 0)
+        media_rows_html += (
+            f'<div class="mrow">'
+            f'<span class="msrc" title="{src}">{src}</span>'
+            f'<span class="mtot">{cnt}</span>'
+            f'<span class="mneg">{n if n else "·"}</span>'
+            f'<span class="mpos">{p if p else "·"}</span>'
+            f'</div>'
+        )
+
+    # Article cards
     def article_cards(items, color, limit=15):
         if not items:
-            return f'<div class="empty">Tidak ada berita dalam kategori ini ✅</div>'
-        html = ""
+            return '<div class="empty">Tidak ada berita dalam kategori ini ✅</div>'
+        out = ""
         for a in items[:limit]:
             bar_w = a.get("score", 0) * 10
-            link  = a.get("link", "").strip()
-            title_html = (
-                f'<a class="atitle-link" href="{link}" target="_blank" rel="noopener">{a.get("title","")}</a>'
-                if link else
+            lnk = a.get("link", "").strip()
+            th = (
+                f'<a class="atitle-link" href="{lnk}" target="_blank" rel="noopener">{a.get("title","")}</a>'
+                if lnk else
                 f'<span class="atitle-nolink">{a.get("title","")}</span>'
             )
-            link_html = (
-                f'<a class="alink" href="{link}" target="_blank" rel="noopener">🔗 Buka artikel</a>'
-                if link else ""
+            lh = (
+                f'<a class="alink" href="{lnk}" target="_blank" rel="noopener">↗ Buka artikel</a>'
+                if lnk else ""
             )
-            html += f"""
-            <div class="acard">
-              <div class="ascore" style="color:{color}">{a.get('score','')}</div>
-              <div class="acontent">
-                <div class="atitle">{title_html}</div>
-                <div class="ameta">
-                  <span class="abadge" style="background:{color}22;color:{color}">{a.get('media_type','')}</span>
-                  <span class="asrc">{a.get('source','')}</span>
-                  <span class="areason">{a.get('reason','')}</span>
-                </div>
-                <div class="abar"><div class="afill" style="width:{bar_w}%;background:{color}"></div></div>
-                {link_html}
-              </div>
-            </div>"""
-        return html
+            out += (
+                f'<div class="acard">'
+                f'<div class="ascore" style="color:{color}">{a.get("score","")}</div>'
+                f'<div class="acontent">'
+                f'<div class="atitle">{th}</div>'
+                f'<div class="ameta">'
+                f'<span class="abadge" style="background:{color}22;color:{color}">{a.get("media_type","")}</span>'
+                f'<span class="asrc">{a.get("source","")}</span>'
+                f'<span class="areason">{a.get("reason","")}</span>'
+                f'</div>'
+                f'<div class="abar"><div class="afill" style="width:{bar_w}%;background:{color}"></div></div>'
+                f'{lh}'
+                f'</div></div>'
+            )
+        return out
 
-    # Hitung jumlah artikel per sumber media
-    from collections import Counter
-    _src_tot = Counter()
-    _src_neg = Counter()
-    _src_pos = Counter()
-    for _a in articles:
-        _src = _a.get("source", "")
-        if not _src:
-            continue
-        _src_tot[_src] += 1
-        if _a.get("sentiment") == "negatif":
-            _src_neg[_src] += 1
-        elif _a.get("sentiment") == "positif":
-            _src_pos[_src] += 1
-    _media_rows = ""
-    for _src, _cnt in _src_tot.most_common(18):
-        _n = _src_neg.get(_src, 0)
-        _p = _src_pos.get(_src, 0)
-        _media_rows += f"""
-        <div class="mrow">
-          <span class="msrc" title="{_src}">{_src}</span>
-          <span class="mtot">{_cnt}</span>
-          <span class="mneg">{_n if _n else '·'}</span>
-          <span class="mpos">{_p if _p else '·'}</span>
-        </div>"""
+    neg_cards = article_cards(negatif, "#f87171")
+    pos_cards = article_cards(positif, "#4ade80")
 
     narasi_block = ""
     if narrative:
-        narasi_block = f"""
-        <section class="narrative-box">
-          <h2 class="sec-title">📋 Ringkasan Naratif Eksekutif</h2>
-          <p class="narrative-text">{narrative.replace(chr(10), '<br><br>')}</p>
-        </section>"""
-
-    chart_block = ""
-    if chart_b64:
-        chart_block = f"""
-        <section class="chart-box">
-          <h2 class="sec-title">📈 Grafik Sentimen</h2>
-          <img src="data:image/png;base64,{chart_b64}" alt="Grafik Sentimen">
-        </section>"""
+        narasi_block = (
+            '<section class="narrative-box">'
+            '<div class="ntitle">📋 Ringkasan Naratif Eksekutif</div>'
+            f'<p class="narrative-text">{narrative.replace(chr(10), "<br><br>")}</p>'
+            '</section>'
+        )
 
     html = f"""<!DOCTYPE html>
 <html lang="id">
@@ -1614,131 +1639,159 @@ def generate_tv_dashboard(articles, date_str, chart_path, narrative=None):
 <title>Media Monitoring BMRI — {date_str}</title>
 <style>
 *{{margin:0;padding:0;box-sizing:border-box}}
-body{{background:#080d1a;color:#e2e8f0;font-family:'Segoe UI',Arial,sans-serif;padding:28px 40px;min-height:100vh}}
-/* Header */
-.hdr{{text-align:center;padding:16px 0 28px;border-bottom:1px solid #1e293b;margin-bottom:28px}}
-.hdr h1{{font-size:2.4rem;font-weight:800;color:#fff;letter-spacing:.5px}}
-.hdr .sub{{color:#64748b;font-size:1rem;margin-top:8px}}
-.hdr .upd{{color:#334155;font-size:.82rem;margin-top:4px}}
-/* Summary cards */
-.cards{{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:26px}}
-.card{{background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:22px 12px;text-align:center}}
-.card .num{{font-size:3.2rem;font-weight:800;line-height:1}}
-.card .lbl{{font-size:.78rem;color:#94a3b8;margin-top:8px;text-transform:uppercase;letter-spacing:1px}}
-/* Chart */
-.chart-box{{background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:20px;margin-bottom:26px;text-align:center}}
-.chart-box img{{width:100%;max-height:700px;object-fit:contain;border-radius:8px}}
-/* Narrative */
-.narrative-box{{background:#0f172a;border:1px solid #1e293b;border-left:4px solid #3b82f6;border-radius:14px;padding:22px 26px;margin-bottom:26px}}
-.narrative-text{{font-size:1.05rem;line-height:1.85;color:#cbd5e1}}
-/* Articles grid */
-.grid{{display:grid;grid-template-columns:200px 1fr 1fr;gap:20px;margin-bottom:26px}}
-.panel{{background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:20px}}
-.sec-title{{font-size:1.05rem;font-weight:700;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #1e293b}}
-/* Article card */
-.acard{{display:flex;gap:14px;padding:11px 0;border-bottom:1px solid #ffffff08;align-items:flex-start}}
-.acard:last-child{{border-bottom:none}}
-.ascore{{font-size:1.7rem;font-weight:800;min-width:38px;text-align:center;line-height:1}}
+body{{background:#080d1a;color:#e2e8f0;font-family:'Segoe UI',Arial,sans-serif;padding:18px 28px}}
+.hdr{{text-align:center;padding:12px 0 18px;border-bottom:1px solid #1e293b;margin-bottom:12px}}
+.hdr h1{{font-size:1.7rem;font-weight:800;color:#fff}}
+.hdr .sub{{color:#64748b;font-size:.8rem;margin-top:5px}}
+.hdr .upd{{color:#334155;font-size:.7rem;margin-top:3px}}
+/* Click legend */
+.click-legend{{display:flex;gap:20px;justify-content:center;align-items:center;background:#0f172a;border-radius:7px;padding:5px 14px;margin-bottom:12px;font-size:.73rem;color:#64748b}}
+.cl-dot{{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}}
+/* 3-column grid */
+.main-grid{{display:grid;grid-template-columns:220px 1fr 1fr;gap:12px;margin-bottom:12px;align-items:start}}
+/* LEFT PANEL */
+.left-panel{{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:13px}}
+.lsec{{font-size:.65rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.7px;text-align:center;margin-bottom:8px}}
+.donut-wrap{{position:relative;width:120px;height:120px;margin:0 auto 10px}}
+.donut-center{{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none}}
+.dpct{{font-size:1.5rem;font-weight:800;line-height:1;color:{sent_color}}}
+.dlbl{{font-size:.6rem;font-weight:700;color:{sent_color};margin-top:2px}}
+.leg{{display:flex;flex-direction:column;gap:5px;margin-bottom:9px}}
+.leg-r{{display:flex;align-items:center;gap:6px;font-size:.72rem}}
+.ldot{{width:8px;height:8px;border-radius:2px;flex-shrink:0}}
+.divider{{border:none;border-top:1px solid #1e293b;margin:7px 0}}
+.tipe-hdr{{display:grid;grid-template-columns:1fr 30px 22px 22px;font-size:.58rem;color:#334155;font-weight:700;margin-bottom:2px;padding:0 2px}}
+.tipe-row{{display:grid;grid-template-columns:1fr 30px 22px 22px;align-items:center;padding:3px 2px;border-bottom:1px solid #1e293b18;font-size:.7rem}}
+.tipe-row:last-child{{border:none}}
+.mdot{{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px}}
+.media-sec{{font-size:.65rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin:0 0 4px}}
+.mhdr,.mrow{{display:grid;grid-template-columns:1fr 24px 20px 20px;gap:3px;align-items:center;padding:0 5px}}
+.mhdr{{font-size:.56rem;color:#334155;font-weight:700;margin-bottom:2px}}
+.mhdr span:not(:first-child){{text-align:center}}
+.mrow{{background:#080d1a;border-radius:4px;padding:4px 5px;margin-bottom:2px}}
+.msrc{{font-size:.62rem;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.mtot{{font-size:.68rem;font-weight:700;color:#e2e8f0;text-align:center}}
+.mneg{{font-size:.62rem;color:#f87171;text-align:center}}
+.mpos{{font-size:.62rem;color:#4ade80;text-align:center}}
+.src-scroll{{max-height:340px;overflow-y:auto}}
+/* ARTICLE PANELS */
+.art-panel{{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:13px}}
+.art-hdr{{font-size:.85rem;font-weight:700;margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid #1e293b;text-align:center}}
+.acard{{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #ffffff07;align-items:flex-start}}
+.acard:last-child{{border:none}}
+.ascore{{font-size:1.4rem;font-weight:800;min-width:30px;text-align:center;line-height:1}}
 .acontent{{flex:1}}
-.atitle{{font-size:.9rem;font-weight:600;line-height:1.4;margin-bottom:5px}}
-.ameta{{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:5px}}
-.abadge{{font-size:.68rem;padding:2px 8px;border-radius:20px;font-weight:600}}
-.asrc{{font-size:.75rem;color:#475569}}
-.areason{{font-size:.75rem;color:#64748b;font-style:italic}}
-.abar{{background:#1e293b;border-radius:4px;height:3px;overflow:hidden}}
-.afill{{height:100%;border-radius:4px}}
-.empty{{color:#334155;text-align:center;padding:24px;font-style:italic}}
+.atitle{{font-size:.8rem;font-weight:600;line-height:1.4;margin-bottom:3px}}
 .atitle-link{{color:#cbd5e1;text-decoration:none;transition:color .15s}}
-.atitle-link:hover{{color:#93c5fd;text-decoration:underline;text-underline-offset:3px}}
-.atitle-link::after{{content:'↗';font-size:.7em;opacity:0;margin-left:3px;color:#60a5fa;transition:opacity .15s}}
+.atitle-link:hover{{color:#93c5fd;text-decoration:underline;text-underline-offset:2px}}
+.atitle-link::after{{content:'↗';font-size:.65em;opacity:0;margin-left:3px;color:#60a5fa;transition:opacity .15s}}
 .atitle-link:hover::after{{opacity:1}}
 .atitle-nolink{{color:#374151}}
-.alink{{display:inline-block;margin-top:5px;font-size:.73rem;color:#60a5fa;text-decoration:none;padding:2px 8px;border:1px solid #1d4ed8;border-radius:12px}}
+.ameta{{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-bottom:3px}}
+.abadge{{font-size:.58rem;padding:2px 6px;border-radius:20px;font-weight:600}}
+.asrc{{font-size:.65rem;color:#475569}}
+.areason{{font-size:.65rem;color:#64748b;font-style:italic}}
+.abar{{background:#1e293b;border-radius:3px;height:3px;overflow:hidden;margin-top:2px}}
+.afill{{height:100%;border-radius:3px}}
+.alink{{display:inline-block;margin-top:4px;font-size:.62rem;color:#60a5fa;text-decoration:none;padding:2px 7px;border:1px solid #1d4ed8;border-radius:10px}}
 .alink:hover{{background:#1d4ed833;color:#93c5fd}}
-/* Media sources panel */
-.grid{{display:grid;grid-template-columns:200px 1fr 1fr;gap:20px;margin-bottom:26px}}
-.media-panel{{background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:16px;overflow-y:auto;max-height:900px}}
-.media-panel-title{{font-size:.78rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #1e293b}}
-.mhdr,.mrow{{display:grid;grid-template-columns:1fr 26px 22px 22px;gap:4px;align-items:center;padding:0 6px}}
-.mhdr{{font-size:9px;color:#334155;font-weight:700;margin-bottom:3px}}
-.mhdr span:not(:first-child){{text-align:center}}
-.mrow{{background:#080d1a;border-radius:5px;padding:5px 6px;margin-bottom:3px}}
-.msrc{{font-size:9.5px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
-.mtot{{font-size:11px;font-weight:700;color:#e2e8f0;text-align:center}}
-.mneg{{font-size:10px;color:#f87171;text-align:center}}
-.mpos{{font-size:10px;color:#4ade80;text-align:center}}
-/* Footer */
-.footer{{text-align:center;color:#1e293b;font-size:.8rem;padding-top:20px;border-top:1px solid #1e293b}}
-/* TV / large screen */
-@media(min-width:1280px){{
-  body{{padding:32px 60px}}
-  .hdr h1{{font-size:2.8rem}}
-  .card .num{{font-size:3.8rem}}
-  .atitle{{font-size:.95rem}}
-  .ascore{{font-size:2rem}}
-  .narrative-text{{font-size:1.1rem}}
-  .grid{{grid-template-columns:220px 1fr 1fr}}
+.empty{{color:#334155;text-align:center;padding:20px;font-style:italic;font-size:.78rem}}
+/* NARRATIVE - bawah grid */
+.narrative-box{{background:#0f172a;border:1px solid #1e293b;border-left:4px solid #3b82f6;border-radius:12px;padding:16px 20px;margin-bottom:12px}}
+.ntitle{{font-size:.85rem;font-weight:700;margin-bottom:8px;color:#93c5fd}}
+.narrative-text{{font-size:.82rem;line-height:1.8;color:#94a3b8}}
+.footer{{text-align:center;color:#1e293b;font-size:.68rem;padding-top:12px;border-top:1px solid #1e293b}}
+@media(min-width:1400px){{
+  .main-grid{{grid-template-columns:240px 1fr 1fr}}
+  .atitle{{font-size:.85rem}}
+  .ascore{{font-size:1.6rem}}
 }}
 </style>
 </head>
 <body>
 
 <header class="hdr">
-  <h1>📊 Media Monitoring Bank Mandiri</h1>
-  <div class="sub">Periode: {date_str} &nbsp;·&nbsp; Sumber: Talkwalker · Google Alerts · Podcast · E-Commerce</div>
+  <h1>📊 Media Monitoring Bank Mandiri (BMRI) — {date_str}</h1>
+  <div class="sub">Total {total} artikel &nbsp;·&nbsp; Sumber: Talkwalker · Google Alerts · Podcast</div>
   <div class="upd">Auto-refresh setiap 10 menit &nbsp;·&nbsp; Terakhir diperbarui: {now_str}</div>
 </header>
 
-<div class="cards">
-  <div class="card">
-    <div class="num" style="color:#94a3b8">{total}</div>
-    <div class="lbl">Total Artikel</div>
-  </div>
-  <div class="card">
-    <div class="num" style="color:#f87171">{len(negatif)}</div>
-    <div class="lbl">Berita Negatif</div>
-  </div>
-  <div class="card">
-    <div class="num" style="color:#4ade80">{len(positif)}</div>
-    <div class="lbl">Berita Positif</div>
-  </div>
-  <div class="card" style="border-color:{sent_color}33;background:{sent_bg}33">
-    <div class="num" style="color:{sent_color}">{pct_pos}%</div>
-    <div class="lbl" style="color:{sent_color}">{sent_label}</div>
-  </div>
+<div class="click-legend">
+  <span><span class="cl-dot" style="background:#cbd5e1"></span>Judul terang + garis bawah saat hover = ada link, bisa diklik</span>
+  <span><span class="cl-dot" style="background:#374151"></span>Judul abu-abu = tidak ada link</span>
 </div>
 
-{chart_block}
-{narasi_block}
+<div class="main-grid">
 
-<div class="grid">
-  <!-- Kolom kiri: Media Terpantau -->
-  <div class="media-panel">
-    <div class="media-panel-title">📡 Media Terpantau</div>
-    <div class="mhdr">
-      <span>Sumber</span><span style="text-align:center">Ttl</span>
-      <span style="color:#f87171;text-align:center">N</span>
-      <span style="color:#4ade80;text-align:center">P</span>
+  <!-- KIRI: Sentimen + Tipe + Media -->
+  <div class="left-panel">
+    <div class="lsec">Sentimen Keseluruhan</div>
+    <div class="donut-wrap">
+      <canvas id="donutCanvas" width="120" height="120"></canvas>
+      <div class="donut-center">
+        <div class="dpct">{pct_pos}%</div>
+        <div class="dlbl">{sent_label}</div>
+      </div>
     </div>
-    {_media_rows}
+    <div class="leg">
+      <div class="leg-r"><div class="ldot" style="background:#f87171"></div><span style="color:#f87171">Negatif {n_neg} ({pct_neg}%)</span></div>
+      <div class="leg-r"><div class="ldot" style="background:#4ade80"></div><span style="color:#4ade80">Positif {n_pos} ({pct_pos}%)</span></div>
+    </div>
+    <hr class="divider">
+    <div class="tipe-hdr"><span>Tipe</span><span style="text-align:center">Ttl</span><span style="color:#f87171;text-align:center">N</span><span style="color:#4ade80;text-align:center">P</span></div>
+    {tipe_rows_html}
+    <hr class="divider">
+    <div class="media-sec">Media Terpantau</div>
+    <div class="mhdr"><span>Sumber</span><span style="text-align:center">Ttl</span><span style="color:#f87171;text-align:center">N</span><span style="color:#4ade80;text-align:center">P</span></div>
+    <div class="src-scroll">{media_rows_html}</div>
   </div>
-  <!-- Kolom tengah: Negatif -->
-  <div class="panel">
-    <h2 class="sec-title" style="color:#f87171">🔴 Berita Negatif — Top {min(len(negatif),15)}</h2>
-    {article_cards(negatif, "#f87171")}
+
+  <!-- TENGAH: Negatif -->
+  <div class="art-panel">
+    <div class="art-hdr" style="color:#f87171">▼ NEGATIF &nbsp;({n_neg} artikel)</div>
+    {neg_cards}
   </div>
-  <!-- Kolom kanan: Positif -->
-  <div class="panel">
-    <h2 class="sec-title" style="color:#4ade80">🟢 Berita Positif — Top {min(len(positif),15)}</h2>
-    {article_cards(positif, "#4ade80")}
+
+  <!-- KANAN: Positif -->
+  <div class="art-panel">
+    <div class="art-hdr" style="color:#4ade80">▲ POSITIF &nbsp;({n_pos} artikel)</div>
+    {pos_cards}
   </div>
+
 </div>
+
+{narasi_block}
 
 <footer class="footer">
   Powered by Claude AI (Anthropic) &nbsp;·&nbsp; Talkwalker Alerts &nbsp;·&nbsp; Google Alerts &nbsp;·&nbsp; ListenNotes
   &nbsp;&nbsp;|&nbsp;&nbsp; Update otomatis setiap hari pukul 07.00 WIB via GitHub Actions
 </footer>
 
+<script>
+(function() {{
+  var canvas = document.getElementById('donutCanvas');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var cx = 60, cy = 60, r = 54, ir = 34;
+  var pctNeg = {pct_neg} / 100;
+  var pctPos = {pct_pos} / 100;
+  var gap = 0.05;
+  var s0 = -Math.PI / 2;
+  function arc(start, end, color) {{
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, start, end);
+    ctx.arc(cx, cy, ir, end, start, true);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+  }}
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, 120, 120);
+  if (pctNeg > 0.01) arc(s0, s0 + Math.PI * 2 * pctNeg - gap, '#f87171');
+  if (pctPos > 0.01) arc(s0 + Math.PI * 2 * pctNeg + gap, s0 + Math.PI * 2 - gap, '#4ade80');
+}})();
+</script>
 </body>
 </html>"""
     return html
@@ -1822,7 +1875,7 @@ def main():
     print("[2/7] Mencari sebutan di Podcast...")
     articles_pod = fetch_podcast_mentions()
 
-    if not tw_bodies and not ga_bodies and not articles_pod:
+    if not tw_bodies and not ga_bodiodies and not articles_pod:
         print("  ⚠ Tidak ada data dari semua sumber.")
         send_telegram_text(
             f"ℹ️ *Media Monitoring Bank Mandiri — {date_str}*\n\n"
@@ -1853,50 +1906,58 @@ def main():
         print("  ⚠ Tidak ada artikel relevan ditemukan.")
         return
 
-    # 4. Analisis sentimen AI
+    # 4. Analisis sentimen
     print("[4/7] Menganalisis sentimen dengan Claude AI...")
     articles = analyze_sentiment(articles)
 
-    # 5. Ringkasan naratif
-    print("[5/7] Membuat ringkasan naratif eksekutif...")
+    # 5. Narasi eksekutif
+    print("[5/7] Membuat narasi eksekutif...")
     narrative = generate_narrative_summary(articles, date_str)
 
-    # 6. Buat grafik
+    # 6. Buat grafik sentimen
     print("[6/7] Membuat grafik sentimen...")
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         chart_path = tmp.name
     generate_chart(articles, chart_path)
 
-    # 7. Generate TV Dashboard
-    print("[7/8] Membuat TV dashboard...")
-    try:
-        dashboard_html = generate_tv_dashboard(articles, date_str, chart_path, narrative=narrative)
-        os.makedirs("docs", exist_ok=True)
-        with open("docs/index.html", "w", encoding="utf-8") as f:
-            f.write(dashboard_html)
-        print("[Dashboard] docs/index.html tersimpan.")
-    except Exception as e:
-        print(f"[Dashboard] Gagal: {e}")
-
-    # 8. Kirim Telegram (5 pesan)
-    print("[8/8] Mengirim ke Telegram & Email...")
+    # 7. Kirim ke Telegram + Deploy Dashboard + Kirim Email
+    print("[7/7] Mengirim ke Telegram + Email + Dashboard...")
     send_telegram_text(format_telegram_negative(articles, date_str))
     send_telegram_text(format_telegram_positive(articles, date_str))
     send_telegram_photo(
         chart_path,
-        caption=f"📊 *Grafik Sentimen Bank Mandiri — {date_str}*\n_{len(articles)} berita dianalisis_"
+        caption=(
+            f"📊 *Grafik Sentimen Bank Mandiri — {date_str}*\n"
+            f"_{len(articles)} berita dianalisis_"
+        )
     )
     send_telegram_text(format_summary(articles, date_str))
-    if narrative:
-        send_telegram_text(
-            f"📋 *Ringkasan Naratif Eksekutif — {date_str}*\n\n{narrative}"
+
+    # Deploy TV Dashboard ke GitHub Pages (docs/index.html)
+    try:
+        dashboard_html = generate_tv_dashboard(
+            articles, date_str, chart_path, narrative=narrative
         )
+        docs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs")
+        os.makedirs(docs_dir, exist_ok=True)
+        dashboard_path = os.path.join(docs_dir, "index.html")
+        with open(dashboard_path, "w", encoding="utf-8") as f:
+            f.write(dashboard_html)
+        print(f"  ✅ Dashboard ditulis ke {dashboard_path}")
+    except Exception as e:
+        print(f"  ⚠ Dashboard error: {e}")
 
-    # Kirim Email
-    send_email(articles, date_str, chart_path, narrative=narrative)
+    # Kirim email
+    try:
+        send_email(articles, date_str, chart_path, narrative=narrative)
+    except Exception as e:
+        print(f"  ⚠ Email error: {e}")
 
-    # Cleanup
-    os.unlink(chart_path)
+    # Cleanup chart temp file
+    try:
+        os.unlink(chart_path)
+    except Exception:
+        pass
 
     print(f"\n✅ Selesai! {len(articles)} artikel dianalisis dan dikirim.")
 
