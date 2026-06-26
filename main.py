@@ -840,8 +840,8 @@ def generate_chart(articles, output_path):
         for xi, h in zip(col_x, headers):
             ax_media.text(xi, 0.95, h, transform=ax_media.transAxes,
                           fontsize=7.5, color=MUTED_C, fontweight="bold")
-        ax_media.axhline(y=0.90, xmin=0, xmax=1, color=GRID_C,
-                         linewidth=0.8, transform=ax_media.transAxes)
+        ax_media.plot([0, 1], [0.90, 0.90], transform=ax_media.transAxes,
+                      color=GRID_C, linewidth=0.8, clip_on=False)
         step = 0.88 / (len(rows_data) + 0.5)
         for r_i, (mt, tot, neg_c, pos_c) in enumerate(rows_data):
             y = 0.88 - r_i * step
