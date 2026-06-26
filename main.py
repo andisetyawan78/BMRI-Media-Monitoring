@@ -1547,9 +1547,20 @@ def save_articles_history(articles, date_str, narrative, docs_dir):
         _json.dump(history, f, ensure_ascii=False, separators=(",", ":"))
 
     if narrative:
-        nar_path = os.path.join(docs_dir, "narrative_latest.json")
+        # Simpan ke narratives.json (akumulatif per tanggal)
+        nar_path = os.path.join(docs_dir, "narratives.json")
+        narr_data = {}
+        if os.path.exists(nar_path):
+            try:
+                with open(nar_path, "r", encoding="utf-8") as f:
+                    narr_data = _json.load(f)
+            except Exception:
+                narr_data = {}
+        narr_data[run_date] = narrative
+        # Prune narasi lama
+        narr_data = {k: v for k, v in narr_data.items() if k >= cutoff_date}
         with open(nar_path, "w", encoding="utf-8") as f:
-            _json.dump({"date": run_date, "text": narrative}, f, ensure_ascii=False)
+            _json.dump(narr_data, f, ensure_ascii=False, indent=None, separators=(",", ":"))
 
     oldest = history[-1]["run_date"] if history else "-"
     print(f"  ✅ Historis: {len(history)} artikel tersimpan (sejak {oldest})")
@@ -1619,7 +1630,8 @@ def generate_tv_dashboard(articles, date_str, chart_path=None, narrative=None):
         ".main-grid{display:grid;grid-template-columns:210px 1fr 1fr;gap:11px;align-items:start;margin-bottom:11px}"
         ".left-panel{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:12px}"
         ".lsec{font-size:.63rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.7px;text-align:center;margin-bottom:7px}"
-        ".donut-wrap{position:relative;width:120px;height:120px;margin:0 auto 9px}"
+        ".donut-wrap{position:relative;width:120px;height:120px;margin:0 auto 7px}"
+        ".donut-range{font-size:.6rem;color:#475569;text-align:center;margin-bottom:7px;line-height:1.5}"
         ".donut-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none}"
         ".dpct{font-size:1.45rem;font-weight:800;line-height:1}"
         ".dlbl{font-size:.58rem;font-weight:700;margin-top:2px}"
@@ -1675,9 +1687,17 @@ def generate_tv_dashboard(articles, date_str, chart_path=None, narrative=None):
     js_logic = """
 const TC={"News":"#58A6FF","Blog":"#4ade80","Twitter":"#1D9BF0","Podcast":"#BC8CFF","Google Alerts":"#F0A500","E-Commerce":"#f87171"};
 let ALL=EMBEDDED;
+let NARRATIVES={};
 
 async function init(){
-  try{const r=await fetch('./articles.json');if(r.ok)ALL=await r.json();}catch(e){}
+  try{
+    const [artRes,narRes]=await Promise.all([
+      fetch('./articles.json').then(r=>r.ok?r.json():null).catch(()=>null),
+      fetch('./narratives.json').then(r=>r.ok?r.json():null).catch(()=>null)
+    ]);
+    if(artRes)ALL=artRes;
+    if(narRes)NARRATIVES=narRes;
+  }catch(e){}
   render(1);
 }
 
@@ -1722,6 +1742,16 @@ function render(days){
   gi('leg-pos').textContent='Positif '+nP+' ('+pP+'%)';
   drawDonut(pP);
 
+  // tanggal data (terlama – terbaru) di bawah legend
+  if(dates.length){
+    const oldest=dates[0],newest=dates[dates.length-1];
+    gi('donut-range').innerHTML=oldest===newest
+      ?'📅 '+fd(oldest)
+      :'📅 '+fd(oldest)+'<br>– '+fd(newest);
+  }else{
+    gi('donut-range').textContent='Tidak ada data';
+  }
+
   // per tipe media
   const td={};
   arts.forEach(a=>{const m=a.media_type||'News';if(!td[m])td[m]={t:0,n:0,p:0};td[m].t++;
@@ -1750,11 +1780,72 @@ function render(days){
   renderArts(neg.slice(0,10),'neg-list','neg-count','#f87171');
   renderArts(pos.slice(0,10),'pos-list','pos-count','#4ade80');
 
-  // narrative
-  if(NAR){
-    gi('nar-day').textContent=days===1?'':`(Narasi: hari terakhir — ${fd(RUN_DATE)})`;
-    gi('nar-text').innerHTML=NAR;
+  // narrative — dinamis sesuai periode
+  renderNarrative(days,arts,neg,pos,dates);
+}
+
+function renderNarrative(days,arts,neg,pos,dates){
+  const nBox=gi('narrative-box');
+  const oldest=dates[0]||'',newest=dates[dates.length-1]||'';
+
+  if(!arts.length){nBox.style.display='none';return;}
+  nBox.style.display='';
+
+  // Cari narasi dari NARRATIVES dict (per tanggal)
+  if(days===1 && dates.length===1){
+    const d=dates[0];
+    const stored=NARRATIVES[d]||(d===RUN_DATE?NAR:null);
+    if(stored){
+      gi('nar-day').textContent=fd(d);
+      gi('nar-text').innerHTML=stored.replace(/\n/g,'<br>');
+      return;
+    }
   }
+
+  // Cek apakah ada narasi harian yang tersimpan dalam rentang ini
+  const availNar=dates.filter(d=>NARRATIVES[d]||(d===RUN_DATE&&NAR));
+  if(days===1 && availNar.length===0 && NAR){
+    gi('nar-day').textContent=fd(RUN_DATE);
+    gi('nar-text').innerHTML=NAR.replace(/\n/g,'<br>');
+    return;
+  }
+
+  // === Auto-generate ringkasan agregat untuk periode multi-hari ===
+  const tot=arts.length,nN=neg.length,nP=pos.length;
+  const pP=tot?Math.round(nP/tot*100):0,pN=100-pP;
+  const lblPeriode={7:'7 hari',30:'30 hari',90:'3 bulan',180:'6 bulan',365:'1 tahun'}[days]||(days+' hari');
+  const dateRange=oldest===newest?fd(oldest):(fd(oldest)+' – '+fd(newest));
+
+  // Top sources
+  const srcC={};arts.forEach(a=>{if(a.source)srcC[a.source]=(srcC[a.source]||0)+1;});
+  const topSrc=Object.entries(srcC).sort((a,b)=>b[1]-a[1]).slice(0,3)
+    .map(([s,c])=>s+' ('+c+')').join(', ');
+
+  let nar=`Dalam <strong>${lblPeriode}</strong> terakhir (${dateRange}), terpantau `
+    +`<strong>${tot}</strong> artikel berita tentang Bank Mandiri dari `
+    +`<strong>${Object.keys(srcC).length}</strong> sumber media.<br><br>`;
+  nar+=`Sentimen: <span style="color:#4ade80;font-weight:600">${pP}% positif</span> (${nP} artikel) `
+    +`dan <span style="color:#f87171;font-weight:600">${pN}% negatif</span> (${nN} artikel).<br><br>`;
+  if(topSrc) nar+=`Media paling aktif: ${esc(topSrc)}.<br><br>`;
+  if(neg.length) nar+=`Berita negatif skor tertinggi: <em>"${esc(neg[0].title)}"</em>`
+    +` — ${esc(neg[0].source)} (${fd(neg[0].run_date)}).<br>`;
+  if(pos.length) nar+=`Berita positif skor tertinggi: <em>"${esc(pos[0].title)}"</em>`
+    +` — ${esc(pos[0].source)} (${fd(pos[0].run_date)}).`;
+
+  // Tampilkan narasi AI harian yang tersedia (jika ada)
+  if(availNar.length>0){
+    nar+='<br><br><details style="margin-top:6px"><summary style="cursor:pointer;color:#60a5fa;font-size:.73rem">📋 Narasi harian tersedia ('+availNar.length+' hari) — klik untuk lihat</summary>';
+    availNar.sort((a,b)=>b.localeCompare(a)).slice(0,10).forEach(d=>{
+      const txt=NARRATIVES[d]||(d===RUN_DATE?NAR:'');
+      if(txt) nar+='<div style="margin-top:10px;padding:8px;background:#080d1a;border-radius:6px;border-left:3px solid #3b82f6">'
+        +'<div style="font-size:.65rem;color:#60a5fa;margin-bottom:4px">'+fd(d)+'</div>'
+        +'<div style="font-size:.74rem;color:#94a3b8">'+txt.replace(/\n/g,'<br>')+'</div></div>';
+    });
+    nar+='</details>';
+  }
+
+  gi('nar-day').textContent=dateRange;
+  gi('nar-text').innerHTML=nar;
 }
 
 function renderArts(items,listId,countId,color){
@@ -1852,6 +1943,7 @@ init();
         '      <div class="leg-r"><div class="ldot" style="background:#4ade80"></div>'
         '<span style="color:#4ade80" id="leg-pos">Positif —</span></div>\n'
         '    </div>\n'
+        '    <div class="donut-range" id="donut-range">—</div>\n'
         '    <hr class="divider">\n'
         '    <div class="tipe-hdr"><span>Tipe</span>'
         '<span style="text-align:center">Ttl</span>'
@@ -1877,7 +1969,7 @@ init();
         '    <div id="pos-list"></div>\n'
         '  </div>\n\n'
         '</div>\n\n'
-        '<div class="narrative-box">\n'
+        '<div class="narrative-box" id="narrative-box">\n'
         '  <div class="ntitle">\U0001f4cb Ringkasan Naratif Eksekutif'
         ' &nbsp;<small id="nar-day" style="font-weight:400;color:#64748b;font-size:.68rem"></small></div>\n'
         '  <div class="narrative-text" id="nar-text"></div>\n'
