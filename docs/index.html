@@ -6,159 +6,209 @@
 <meta http-equiv="refresh" content="600">
 <title>Media Monitoring BMRI — 25 June 2026</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{background:#080d1a;color:#e2e8f0;font-family:'Segoe UI',Arial,sans-serif;padding:18px 28px}
-.hdr{text-align:center;padding:12px 0 18px;border-bottom:1px solid #1e293b;margin-bottom:12px}
-.hdr h1{font-size:1.7rem;font-weight:800;color:#fff}
-.hdr .sub{color:#64748b;font-size:.8rem;margin-top:5px}
-.hdr .upd{color:#334155;font-size:.7rem;margin-top:3px}
-/* Click legend */
-.click-legend{display:flex;gap:20px;justify-content:center;align-items:center;background:#0f172a;border-radius:7px;padding:5px 14px;margin-bottom:12px;font-size:.73rem;color:#64748b}
-.cl-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
-/* 3-column grid */
-.main-grid{display:grid;grid-template-columns:220px 1fr 1fr;gap:12px;margin-bottom:12px;align-items:start}
-/* LEFT PANEL */
-.left-panel{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:13px}
-.lsec{font-size:.65rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.7px;text-align:center;margin-bottom:8px}
-.donut-wrap{position:relative;width:120px;height:120px;margin:0 auto 10px}
-.donut-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none}
-.dpct{font-size:1.5rem;font-weight:800;line-height:1;color:#4ade80}
-.dlbl{font-size:.6rem;font-weight:700;color:#4ade80;margin-top:2px}
-.leg{display:flex;flex-direction:column;gap:5px;margin-bottom:9px}
-.leg-r{display:flex;align-items:center;gap:6px;font-size:.72rem}
-.ldot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
-.divider{border:none;border-top:1px solid #1e293b;margin:7px 0}
-.tipe-hdr{display:grid;grid-template-columns:1fr 30px 22px 22px;font-size:.58rem;color:#334155;font-weight:700;margin-bottom:2px;padding:0 2px}
-.tipe-row{display:grid;grid-template-columns:1fr 30px 22px 22px;align-items:center;padding:3px 2px;border-bottom:1px solid #1e293b18;font-size:.7rem}
-.tipe-row:last-child{border:none}
-.mdot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px}
-.media-sec{font-size:.65rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin:0 0 4px}
-.mhdr,.mrow{display:grid;grid-template-columns:1fr 24px 20px 20px;gap:3px;align-items:center;padding:0 5px}
-.mhdr{font-size:.56rem;color:#334155;font-weight:700;margin-bottom:2px}
-.mhdr span:not(:first-child){text-align:center}
-.mrow{background:#080d1a;border-radius:4px;padding:4px 5px;margin-bottom:2px}
-.msrc{font-size:.62rem;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mtot{font-size:.68rem;font-weight:700;color:#e2e8f0;text-align:center}
-.mneg{font-size:.62rem;color:#f87171;text-align:center}
-.mpos{font-size:.62rem;color:#4ade80;text-align:center}
-.src-scroll{max-height:340px;overflow-y:auto}
-/* ARTICLE PANELS */
-.art-panel{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:13px}
-.art-hdr{font-size:.85rem;font-weight:700;margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid #1e293b;text-align:center}
-.acard{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #ffffff07;align-items:flex-start}
-.acard:last-child{border:none}
-.ascore{font-size:1.4rem;font-weight:800;min-width:30px;text-align:center;line-height:1}
-.acontent{flex:1}
-.atitle{font-size:.8rem;font-weight:600;line-height:1.4;margin-bottom:3px}
-.atitle-link{color:#cbd5e1;text-decoration:none;transition:color .15s}
-.atitle-link:hover{color:#93c5fd;text-decoration:underline;text-underline-offset:2px}
-.atitle-link::after{content:'↗';font-size:.65em;opacity:0;margin-left:3px;color:#60a5fa;transition:opacity .15s}
-.atitle-link:hover::after{opacity:1}
-.atitle-nolink{color:#374151}
-.ameta{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-bottom:3px}
-.abadge{font-size:.58rem;padding:2px 6px;border-radius:20px;font-weight:600}
-.asrc{font-size:.65rem;color:#475569}
-.areason{font-size:.65rem;color:#64748b;font-style:italic}
-.abar{background:#1e293b;border-radius:3px;height:3px;overflow:hidden;margin-top:2px}
-.afill{height:100%;border-radius:3px}
-.alink{display:inline-block;margin-top:4px;font-size:.62rem;color:#60a5fa;text-decoration:none;padding:2px 7px;border:1px solid #1d4ed8;border-radius:10px}
-.alink:hover{background:#1d4ed833;color:#93c5fd}
-.empty{color:#334155;text-align:center;padding:20px;font-style:italic;font-size:.78rem}
-/* NARRATIVE - bawah grid */
-.narrative-box{background:#0f172a;border:1px solid #1e293b;border-left:4px solid #3b82f6;border-radius:12px;padding:16px 20px;margin-bottom:12px}
-.ntitle{font-size:.85rem;font-weight:700;margin-bottom:8px;color:#93c5fd}
-.narrative-text{font-size:.82rem;line-height:1.8;color:#94a3b8}
-.footer{text-align:center;color:#1e293b;font-size:.68rem;padding-top:12px;border-top:1px solid #1e293b}
-@media(min-width:1400px){
-  .main-grid{grid-template-columns:240px 1fr 1fr}
-  .atitle{font-size:.85rem}
-  .ascore{font-size:1.6rem}
-}
+*{margin:0;padding:0;box-sizing:border-box}body{background:#080d1a;color:#e2e8f0;font-family:'Segoe UI',Arial,sans-serif;padding:16px 24px}.hdr{text-align:center;padding:12px 0 14px;border-bottom:1px solid #1e293b;margin-bottom:11px}.hdr h1{font-size:1.65rem;font-weight:800;color:#fff}.hdr .sub{color:#64748b;font-size:.78rem;margin-top:4px}.hdr .upd{color:#334155;font-size:.68rem;margin-top:3px}.filter-bar{display:flex;align-items:center;gap:8px;background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:8px 14px;margin-bottom:11px;flex-wrap:wrap}.filter-label{font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.6px;margin-right:4px;white-space:nowrap}.filter-btn{padding:5px 13px;border-radius:20px;font-size:.74rem;font-weight:600;border:1px solid #1e293b;background:transparent;color:#94a3b8;cursor:pointer;transition:all .15s;white-space:nowrap}.filter-btn:hover{border-color:#3b82f6;color:#93c5fd}.filter-btn.active{background:#1d4ed8;border-color:#1d4ed8;color:#fff}.filter-divider{width:1px;height:16px;background:#1e293b;margin:0 2px}.filter-info{margin-left:auto;font-size:.67rem;color:#475569;white-space:nowrap}.stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:11px}.stat-card{background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:12px 8px;text-align:center}.stat-num{font-size:1.85rem;font-weight:800;line-height:1}.stat-lbl{font-size:.6rem;color:#64748b;margin-top:4px;text-transform:uppercase;letter-spacing:.6px}.click-legend{display:flex;gap:18px;justify-content:center;align-items:center;background:#0f172a;border-radius:7px;padding:5px 14px;margin-bottom:11px;font-size:.72rem;color:#64748b}.cl-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}.main-grid{display:grid;grid-template-columns:210px 1fr 1fr;gap:11px;align-items:start;margin-bottom:11px}.left-panel{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:12px}.lsec{font-size:.63rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.7px;text-align:center;margin-bottom:7px}.donut-wrap{position:relative;width:120px;height:120px;margin:0 auto 9px}.donut-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none}.dpct{font-size:1.45rem;font-weight:800;line-height:1}.dlbl{font-size:.58rem;font-weight:700;margin-top:2px}.leg{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}.leg-r{display:flex;align-items:center;gap:6px;font-size:.7rem}.ldot{width:8px;height:8px;border-radius:2px;flex-shrink:0}.divider{border:none;border-top:1px solid #1e293b;margin:7px 0}.tipe-hdr{display:grid;grid-template-columns:1fr 30px 22px 22px;font-size:.57rem;color:#334155;font-weight:700;margin-bottom:2px;padding:0 2px}.tipe-row{display:grid;grid-template-columns:1fr 30px 22px 22px;align-items:center;padding:3px 2px;border-bottom:1px solid #1e293b18;font-size:.68rem}.tipe-row:last-child{border:none}.mdot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px}.media-sec{font-size:.63rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin:0 0 4px}.mhdr,.mrow{display:grid;grid-template-columns:1fr 24px 20px 20px;gap:3px;align-items:center;padding:0 5px}.mhdr{font-size:.55rem;color:#334155;font-weight:700;margin-bottom:2px}.mhdr span:not(:first-child){text-align:center}.mrow{background:#080d1a;border-radius:4px;padding:4px 5px;margin-bottom:2px}.msrc{font-size:.6rem;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mtot{font-size:.65rem;font-weight:700;color:#e2e8f0;text-align:center}.mneg{font-size:.6rem;color:#f87171;text-align:center}.mpos{font-size:.6rem;color:#4ade80;text-align:center}.src-scroll{max-height:320px;overflow-y:auto}.art-panel{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:12px}.art-hdr{font-size:.83rem;font-weight:700;margin-bottom:9px;padding-bottom:7px;border-bottom:1px solid #1e293b;text-align:center}.acard{display:flex;gap:9px;padding:7px 0;border-bottom:1px solid #ffffff06;align-items:flex-start}.acard:last-child{border:none}.ascore{font-size:1.3rem;font-weight:800;min-width:28px;text-align:center;line-height:1}.acontent{flex:1;min-width:0}.adate{font-size:.57rem;color:#334155;margin-bottom:2px}.atitle-link{display:block;font-size:.77rem;font-weight:600;color:#cbd5e1;text-decoration:none;line-height:1.4;margin-bottom:2px;transition:color .15s}.atitle-link:hover{color:#93c5fd;text-decoration:underline;text-underline-offset:2px}.atitle-link::after{content:'\2197';font-size:.65em;opacity:0;margin-left:3px;color:#60a5fa;transition:opacity .15s}.atitle-link:hover::after{opacity:1}.atitle-nolink{display:block;font-size:.77rem;font-weight:600;color:#374151;line-height:1.4;margin-bottom:2px}.asrc{font-size:.63rem;color:#475569;margin-bottom:2px}.areason{font-size:.6rem;color:#64748b;font-style:italic}.abar{background:#1e293b;border-radius:3px;height:3px;overflow:hidden;margin-top:3px}.afill{height:100%;border-radius:3px}.alink{display:inline-block;margin-top:4px;font-size:.61rem;color:#60a5fa;text-decoration:none;padding:2px 7px;border:1px solid #1d4ed8;border-radius:10px}.alink:hover{background:#1d4ed822;color:#93c5fd}.empty{color:#334155;text-align:center;padding:20px;font-style:italic;font-size:.78rem}.narrative-box{background:#0f172a;border:1px solid #1e293b;border-left:4px solid #3b82f6;border-radius:12px;padding:14px 18px;margin-bottom:11px}.ntitle{font-size:.8rem;font-weight:700;color:#93c5fd;margin-bottom:6px}.narrative-text{font-size:.77rem;line-height:1.8;color:#94a3b8}.footer{text-align:center;color:#1e293b;font-size:.65rem;padding-top:10px;border-top:1px solid #1e293b}@media(min-width:1400px){.main-grid{grid-template-columns:230px 1fr 1fr}}
 </style>
 </head>
 <body>
 
 <header class="hdr">
-  <h1>📊 Media Monitoring Bank Mandiri (BMRI) — 25 June 2026</h1>
-  <div class="sub">Total 39 artikel &nbsp;·&nbsp; Sumber: Talkwalker · Google Alerts · Podcast</div>
-  <div class="upd">Auto-refresh setiap 10 menit &nbsp;·&nbsp; Terakhir diperbarui: 26 June 2026, 13:59 WIB</div>
+  <h1>📊 Media Monitoring Bank Mandiri (BMRI)</h1>
+  <div class="sub">Sumber: Talkwalker · Google Alerts · Podcast &nbsp;·&nbsp; Auto-refresh setiap 10 menit</div>
+  <div class="upd">Terakhir diperbarui: 26 June 2026, 15:04 WIB</div>
 </header>
 
 <div class="click-legend">
-  <span><span class="cl-dot" style="background:#cbd5e1"></span>Judul terang + garis bawah saat hover = ada link, bisa diklik</span>
+  <span><span class="cl-dot" style="background:#cbd5e1"></span>Judul terang = ada link, bisa diklik</span>
   <span><span class="cl-dot" style="background:#374151"></span>Judul abu-abu = tidak ada link</span>
+</div>
+
+<div class="filter-bar">
+  <span class="filter-label">⏱ Periode:</span>
+  <button class="filter-btn active" onclick="setFilter(this,1)">Kemarin</button>
+  <button class="filter-btn" onclick="setFilter(this,7)">7 Hari</button>
+  <button class="filter-btn" onclick="setFilter(this,30)">30 Hari</button>
+  <button class="filter-btn" onclick="setFilter(this,90)">3 Bulan</button>
+  <button class="filter-btn" onclick="setFilter(this,180)">6 Bulan</button>
+  <button class="filter-btn" onclick="setFilter(this,365)">1 Tahun</button>
+  <div class="filter-divider"></div>
+  <span class="filter-info" id="filter-info">Memuat data...</span>
+</div>
+
+<div class="stats-row">
+  <div class="stat-card"><div class="stat-num" style="color:#94a3b8" id="s-total">—</div><div class="stat-lbl">Total Artikel</div></div>
+  <div class="stat-card"><div class="stat-num" style="color:#f87171" id="s-neg">—</div><div class="stat-lbl">Negatif</div></div>
+  <div class="stat-card"><div class="stat-num" style="color:#4ade80" id="s-pos">—</div><div class="stat-lbl">Positif</div></div>
+  <div class="stat-card"><div class="stat-num" id="s-pct">—</div><div class="stat-lbl">Sentimen Positif</div></div>
+  <div class="stat-card"><div class="stat-num" style="color:#60a5fa" id="s-sources">—</div><div class="stat-lbl">Media Sumber</div></div>
 </div>
 
 <div class="main-grid">
 
-  <!-- KIRI: Sentimen + Tipe + Media -->
   <div class="left-panel">
     <div class="lsec">Sentimen Keseluruhan</div>
     <div class="donut-wrap">
       <canvas id="donutCanvas" width="120" height="120"></canvas>
-      <div class="donut-center">
-        <div class="dpct">77%</div>
-        <div class="dlbl">POSITIF ✅</div>
-      </div>
+      <div class="donut-center"><div class="dpct" id="dpct">—</div><div class="dlbl" id="dlbl">Memuat...</div></div>
     </div>
     <div class="leg">
-      <div class="leg-r"><div class="ldot" style="background:#f87171"></div><span style="color:#f87171">Negatif 9 (23%)</span></div>
-      <div class="leg-r"><div class="ldot" style="background:#4ade80"></div><span style="color:#4ade80">Positif 30 (77%)</span></div>
+      <div class="leg-r"><div class="ldot" style="background:#f87171"></div><span style="color:#f87171" id="leg-neg">Negatif —</span></div>
+      <div class="leg-r"><div class="ldot" style="background:#4ade80"></div><span style="color:#4ade80" id="leg-pos">Positif —</span></div>
     </div>
     <hr class="divider">
     <div class="tipe-hdr"><span>Tipe</span><span style="text-align:center">Ttl</span><span style="color:#f87171;text-align:center">N</span><span style="color:#4ade80;text-align:center">P</span></div>
-    <div class="tipe-row"><span><span class="mdot" style="background:#58A6FF"></span><span style="color:#58A6FF">News</span></span><span style="text-align:center;color:#e2e8f0">39</span><span style="text-align:center;color:#f87171">9</span><span style="text-align:center;color:#4ade80">30</span></div>
+    <div id="tipe-rows"></div>
     <hr class="divider">
     <div class="media-sec">Media Terpantau</div>
     <div class="mhdr"><span>Sumber</span><span style="text-align:center">Ttl</span><span style="color:#f87171;text-align:center">N</span><span style="color:#4ade80;text-align:center">P</span></div>
-    <div class="src-scroll"><div class="mrow"><span class="msrc" title="tandaseru.id">tandaseru.id</span><span class="mtot">6</span><span class="mneg">1</span><span class="mpos">5</span></div><div class="mrow"><span class="msrc" title="twitter.com">twitter.com</span><span class="mtot">3</span><span class="mneg">·</span><span class="mpos">3</span></div><div class="mrow"><span class="msrc" title="jakarta365.net">jakarta365.net</span><span class="mtot">3</span><span class="mneg">·</span><span class="mpos">3</span></div><div class="mrow"><span class="msrc" title="finansial.bisnis.com">finansial.bisnis.com</span><span class="mtot">2</span><span class="mneg">·</span><span class="mpos">2</span></div><div class="mrow"><span class="msrc" title="obnews.co">obnews.co</span><span class="mtot">2</span><span class="mneg">2</span><span class="mpos">·</span></div><div class="mrow"><span class="msrc" title="mediaindonesia.com">mediaindonesia.com</span><span class="mtot">2</span><span class="mneg">·</span><span class="mpos">2</span></div><div class="mrow"><span class="msrc" title="keuangan.kontan.co.id">keuangan.kontan.co.id</span><span class="mtot">2</span><span class="mneg">1</span><span class="mpos">1</span></div><div class="mrow"><span class="msrc" title="databoks.katadata.co.id">databoks.katadata.co.id</span><span class="mtot">2</span><span class="mneg">2</span><span class="mpos">·</span></div><div class="mrow"><span class="msrc" title="seremonia.id">seremonia.id</span><span class="mtot">1</span><span class="mneg">·</span><span class="mpos">1</span></div><div class="mrow"><span class="msrc" title="marathons.fr">marathons.fr</span><span class="mtot">1</span><span class="mneg">·</span><span class="mpos">1</span></div><div class="mrow"><span class="msrc" title="bisnisupdate.com">bisnisupdate.com</span><span class="mtot">1</span><span class="mneg">1</span><span class="mpos">·</span></div><div class="mrow"><span class="msrc" title="cgv.id">cgv.id</span><span class="mtot">1</span><span class="mneg">·</span><span class="mpos">1</span></div><div class="mrow"><span class="msrc" title="mistar.id">mistar.id</span><span class="mtot">1</span><span class="mneg">·</span><span class="mpos">1</span></div><div class="mrow"><span class="msrc" title="akurat.co">akurat.co</span><span class="mtot">1</span><span class="mneg">·</span><span class="mpos">1</span></div><div class="mrow"><span class="msrc" title="jogja.tribunnews.com">jogja.tribunnews.com</span><span class="mtot">1</span><span class="mneg">1</span><span class="mpos">·</span></div><div class="mrow"><span class="msrc" title="prianganinsider.pikiran-rakyat.com">prianganinsider.pikiran-rakyat.com</span><span class="mtot">1</span><span class="mneg">·</span><span class="mpos">1</span></div><div class="mrow"><span class="msrc" title="halosumsel.co.id">halosumsel.co.id</span><span class="mtot">1</span><span class="mneg">·</span><span class="mpos">1</span></div><div class="mrow"><span class="msrc" title="ekbis.harianjogja.com">ekbis.harianjogja.com</span><span class="mtot">1</span><span class="mneg">·</span><span class="mpos">1</span></div><div class="mrow"><span class="msrc" title="nobartv.co.id">nobartv.co.id</span><span class="mtot">1</span><span class="mneg">·</span><span class="mpos">1</span></div><div class="mrow"><span class="msrc" title="mediakonsumen.com">mediakonsumen.com</span><span class="mtot">1</span><span class="mneg">·</span><span class="mpos">1</span></div></div>
+    <div class="src-scroll" id="src-scroll"></div>
   </div>
 
-  <!-- TENGAH: Negatif -->
   <div class="art-panel">
-    <div class="art-hdr" style="color:#f87171">▼ NEGATIF &nbsp;(9 artikel)</div>
-    <div class="acard"><div class="ascore" style="color:#f87171">8</div><div class="acontent"><div class="atitle"><a class="atitle-link" href="https://bisnisupdate.com/berita-populer/pwri-banyumas-dukung-proses-hukum-bagi-kasus-penipuan-pensiunan/470999/" target="_blank" rel="noopener">...Bambang Budiono, mendukung proses hukum terhadap dugaan penipuan oleh mantan pegawai</a></div><div class="ameta"><span class="abadge" style="background:#f8717122;color:#f87171">News</span><span class="asrc">bisnisupdate.com</span><span class="areason">Dugaan penipuan oleh mantan pegawai Bank Mandiri</span></div><div class="abar"><div class="afill" style="width:80%;background:#f87171"></div></div><a class="alink" href="https://bisnisupdate.com/berita-populer/pwri-banyumas-dukung-proses-hukum-bagi-kasus-penipuan-pensiunan/470999/" target="_blank" rel="noopener">↗ Buka artikel</a></div></div><div class="acard"><div class="ascore" style="color:#f87171">7</div><div class="acontent"><div class="atitle"><a class="atitle-link" href="https://jogja.tribunnews.com/jawa/1217313/25-pensiunan-merugi-rp5-miliar-dalam-kasus-mandiri-taspen-purwokerto" target="_blank" rel="noopener">Hingga Rabu (24/6/2026) ... bermasalah yang menyeret nama mantan karyawan</a></div><div class="ameta"><span class="abadge" style="background:#f8717122;color:#f87171">News</span><span class="asrc">jogja.tribunnews.com</span><span class="areason">Masalah mantan karyawan Bank Mandiri</span></div><div class="abar"><div class="afill" style="width:70%;background:#f87171"></div></div><a class="alink" href="https://jogja.tribunnews.com/jawa/1217313/25-pensiunan-merugi-rp5-miliar-dalam-kasus-mandiri-taspen-purwokerto" target="_blank" rel="noopener">↗ Buka artikel</a></div></div><div class="acard"><div class="ascore" style="color:#f87171">7</div><div class="acontent"><div class="atitle"><span class="atitle-nolink">Tekanan jual terjadi merata pada saham-saham perbankan jumbo. Saham PT</span></div><div class="ameta"><span class="abadge" style="background:#f8717122;color:#f87171">News</span><span class="asrc">keuangan.kontan.co.id</span><span class="areason">Tekanan jual saham Mandiri merata dengan perbankan jumbo lainnya.</span></div><div class="abar"><div class="afill" style="width:70%;background:#f87171"></div></div></div></div><div class="acard"><div class="ascore" style="color:#f87171">6</div><div class="acontent"><div class="atitle"><span class="atitle-nolink">Bank Central Asia Tbk (BBCA), semuanya mengalami koreksi harga.</span></div><div class="ameta"><span class="abadge" style="background:#f8717122;color:#f87171">News</span><span class="asrc">tandaseru.id</span><span class="areason">Bank Mandiri mengalami koreksi harga saham</span></div><div class="abar"><div class="afill" style="width:60%;background:#f87171"></div></div></div></div><div class="acard"><div class="ascore" style="color:#f87171">6</div><div class="acontent"><div class="atitle"><span class="atitle-nolink">Taspen Cabang Purwokerto segera melapor untuk mendukung...</span></div><div class="ameta"><span class="abadge" style="background:#f8717122;color:#f87171">News</span><span class="asrc">obnews.co</span><span class="areason">Masalah mantan pegawai Bank Mandiri</span></div><div class="abar"><div class="afill" style="width:60%;background:#f87171"></div></div></div></div><div class="acard"><div class="ascore" style="color:#f87171">6</div><div class="acontent"><div class="atitle"><span class="atitle-nolink">Taspen Kantor Cabang Purwokerto terhadap sejumlah nasabah...</span></div><div class="ameta"><span class="abadge" style="background:#f8717122;color:#f87171">News</span><span class="asrc">obnews.co</span><span class="areason">Masalah nasabah Bank Mandiri</span></div><div class="abar"><div class="afill" style="width:60%;background:#f87171"></div></div></div></div><div class="acard"><div class="ascore" style="color:#f87171">6</div><div class="acontent"><div class="atitle"><a class="atitle-link" href="https://databoks.katadata.co.id/en/market/statistics/6a3bba5f00c76/10-indonesian-stocks-most-sold-by-foreign-investors-following-msci-announcement-june-24-2026" target="_blank" rel="noopener">10 Indonesian Stocks Most Sold by Foreign Investors Following MSCI Announcement (June 24, 2026)</a></div><div class="ameta"><span class="abadge" style="background:#f8717122;color:#f87171">News</span><span class="asrc">databoks.katadata.co.id</span><span class="areason">Saham BMRI termasuk 10 terbanyak dilepas investor asing pasca MSCI.</span></div><div class="abar"><div class="afill" style="width:60%;background:#f87171"></div></div><a class="alink" href="https://databoks.katadata.co.id/en/market/statistics/6a3bba5f00c76/10-indonesian-stocks-most-sold-by-foreign-investors-following-msci-announcement-june-24-2026" target="_blank" rel="noopener">↗ Buka artikel</a></div></div><div class="acard"><div class="ascore" style="color:#f87171">6</div><div class="acontent"><div class="atitle"><a class="atitle-link" href="https://databoks.katadata.co.id/pasar/statistik/6a3bba5f00c76/10-saham-paling-banyak-dilepas-investor-asing-usai-pengumuman-msci-24-juni-2026" target="_blank" rel="noopener">10 Saham Paling Banyak Dilepas Investor Asing Usai Pengumuman MSCI (24 Juni 2026)</a></div><div class="ameta"><span class="abadge" style="background:#f8717122;color:#f87171">News</span><span class="asrc">databoks.katadata.co.id</span><span class="areason">Saham Mandiri termasuk 10 terbanyak dilepas investor asing periode MSCI.</span></div><div class="abar"><div class="afill" style="width:60%;background:#f87171"></div></div><a class="alink" href="https://databoks.katadata.co.id/pasar/statistik/6a3bba5f00c76/10-saham-paling-banyak-dilepas-investor-asing-usai-pengumuman-msci-24-juni-2026" target="_blank" rel="noopener">↗ Buka artikel</a></div></div><div class="acard"><div class="ascore" style="color:#f87171">5</div><div class="acontent"><div class="atitle"><a class="atitle-link" href="https://banyumas.tribunnews.com/news/93286/ajak-cucu-demo-mandiri-taspen-122-pensiunan-tagih-lenyapnya-rp258-m" target="_blank" rel="noopener">Taspen Cabang Purwokerto mulai banyak bermunculan di berbagai titik...</a></div><div class="ameta"><span class="abadge" style="background:#f8717122;color:#f87171">News</span><span class="asrc">banyumas.tribunnews.com</span><span class="areason">Protes pensiunan nasabah Taspen terkait Bank Mandiri sebagai peserta.</span></div><div class="abar"><div class="afill" style="width:50%;background:#f87171"></div></div><a class="alink" href="https://banyumas.tribunnews.com/news/93286/ajak-cucu-demo-mandiri-taspen-122-pensiunan-tagih-lenyapnya-rp258-m" target="_blank" rel="noopener">↗ Buka artikel</a></div></div>
+    <div class="art-hdr" style="color:#f87171">▼ NEGATIF &nbsp;<span id="neg-count"></span></div>
+    <div id="neg-list"></div>
   </div>
 
-  <!-- KANAN: Positif -->
   <div class="art-panel">
-    <div class="art-hdr" style="color:#4ade80">▲ POSITIF &nbsp;(30 artikel)</div>
-    <div class="acard"><div class="ascore" style="color:#4ade80">9</div><div class="acontent"><div class="atitle"><span class="atitle-nolink">Mandiri tahun 2025 yang menembus angka Rp56,3 triliun. Kinerja cemerlang</span></div><div class="ameta"><span class="abadge" style="background:#4ade8022;color:#4ade80">News</span><span class="asrc">tandaseru.id</span><span class="areason">Bank Mandiri capai revenue Rp56,3 triliun tahun 2025</span></div><div class="abar"><div class="afill" style="width:90%;background:#4ade80"></div></div></div></div><div class="acard"><div class="ascore" style="color:#4ade80">9</div><div class="acontent"><div class="atitle"><span class="atitle-nolink">(Rp55 triliun), BNI (Rp55 triliun), BRI (Rp55 triliun), BTN (Rp25 triliun) dan BSI (Rp10 triliun).</span></div><div class="ameta"><span class="abadge" style="background:#4ade8022;color:#4ade80">News</span><span class="asrc">finansial.bisnis.com</span><span class="areason">Bank Mandiri terima injeksi Rp76 triliun</span></div><div class="abar"><div class="afill" style="width:90%;background:#4ade80"></div></div></div></div><div class="acard"><div class="ascore" style="color:#4ade80">9</div><div class="acontent"><div class="atitle"><span class="atitle-nolink">Mandiri Tbk, misalnya, menyetujui pembagian dividen sebesar Rp44,47 triliun atau ... mencapai Rp56,3 triliun. Kinerja positif</span></div><div class="ameta"><span class="abadge" style="background:#4ade8022;color:#4ade80">News</span><span class="asrc">mediaindonesia.com</span><span class="areason">Bank Mandiri dividen Rp44,47 triliun kinerja positif</span></div><div class="abar"><div class="afill" style="width:90%;background:#4ade80"></div></div></div></div><div class="acard"><div class="ascore" style="color:#4ade80">8</div><div class="acontent"><div class="atitle"><span class="atitle-nolink">Mandiri Care @08septgurl @08septgurl @08septgurl Halo Sahabat @08septgurl, mohon maaf atas ketidaknyamanannya terkait dengan kendala penerimaan kode OTP tersebut, sudah kami berikan jawaban, dimohon untuk melakukan pengecekan DM nya ya. Semoga kejadian ini tidak mengurangi kepercayaan Sahabat terhadap</span></div><div class="ameta"><span class="abadge" style="background:#4ade8022;color:#4ade80">News</span><span class="asrc">twitter.com</span><span class="areason">Customer service proaktif menyelesaikan masalah OTP pelanggan</span></div><div class="abar"><div class="afill" style="width:80%;background:#4ade80"></div></div></div></div><div class="acard"><div class="ascore" style="color:#4ade80">8</div><div class="acontent"><div class="atitle"><a class="atitle-link" href="https://tandaseru.id/bisnis/sentimen-positif-landa-bursa-ihsg-lonjak-269-berkat-sektor-perbankan/" target="_blank" rel="noopener">Sentimen Positif Landa Bursa, IHSG Lonjak 2,69% Berkat Sektor Perbankan</a></div><div class="ameta"><span class="abadge" style="background:#4ade8022;color:#4ade80">News</span><span class="asrc">tandaseru.id</span><span class="areason">Sektor perbankan termasuk BMRI menunjukkan kinerja menggembirakan</span></div><div class="abar"><div class="afill" style="width:80%;background:#4ade80"></div></div><a class="alink" href="https://tandaseru.id/bisnis/sentimen-positif-landa-bursa-ihsg-lonjak-269-berkat-sektor-perbankan/" target="_blank" rel="noopener">↗ Buka artikel</a></div></div><div class="acard"><div class="ascore" style="color:#4ade80">8</div><div class="acontent"><div class="atitle"><span class="atitle-nolink">Mandiri , BRI, BNI, dan BTN. Menteri ... selektif dan kualitas aset terjaga</span></div><div class="ameta"><span class="abadge" style="background:#4ade8022;color:#4ade80">News</span><span class="asrc">mediaindonesia.com</span><span class="areason">Bank Mandiri aset berkualitas dan selektif</span></div><div class="abar"><div class="afill" style="width:80%;background:#4ade80"></div></div></div></div><div class="acard"><div class="ascore" style="color:#4ade80">8</div><div class="acontent"><div class="atitle"><a class="atitle-link" href="https://www.metrotvnews.com/read/bJECjP5q-himbara-sebar-dividen-dari-laba-2025-segini-besarannya" target="_blank" rel="noopener">Mandiri menyalurkan dividen interim tahun buku 2025. Langkah ini mencerminkan fundamental perseroan yang tetap solid, likuiditas yang terjaga, serta konsistensi kinerja</a></div><div class="ameta"><span class="abadge" style="background:#4ade8022;color:#4ade80">News</span><span class="asrc">metrotvnews.com</span><span class="areason">Dividen interim mencerminkan fundamental solid dan kinerja konsisten Mandiri.</span></div><div class="abar"><div class="afill" style="width:80%;background:#4ade80"></div></div><a class="alink" href="https://www.metrotvnews.com/read/bJECjP5q-himbara-sebar-dividen-dari-laba-2025-segini-besarannya" target="_blank" rel="noopener">↗ Buka artikel</a></div></div><div class="acard"><div class="ascore" style="color:#4ade80">7</div><div class="acontent"><div class="atitle"><span class="atitle-nolink">Mandiri Care ...Mandiri. Mohon kesediaannya dapat mengirimkan pesan gambar/capture terbaru melalui DM agar dibantu lebih lanjut ya. Semoga kejadian ini tidak mengurangi kepercayaan Sahabat terhadap</span></div><div class="ameta"><span class="abadge" style="background:#4ade8022;color:#4ade80">News</span><span class="asrc">twitter.com</span><span class="areason">Mandiri Care responsif terhadap keluhan pelanggan dengan solusi</span></div><div class="abar"><div class="afill" style="width:70%;background:#4ade80"></div></div></div></div><div class="acard"><div class="ascore" style="color:#4ade80">7</div><div class="acontent"><div class="atitle"><span class="atitle-nolink">BUMN menjadi sasaran utama penyaluran dana ini, yaitu</span></div><div class="ameta"><span class="abadge" style="background:#4ade8022;color:#4ade80">News</span><span class="asrc">tandaseru.id</span><span class="areason">Bank Mandiri menjadi sasaran penyaluran dana BUMN</span></div><div class="abar"><div class="afill" style="width:70%;background:#4ade80"></div></div></div></div><div class="acard"><div class="ascore" style="color:#4ade80">7</div><div class="acontent"><div class="atitle"><span class="atitle-nolink">Mandiri , BRI, BNI, dan BTN) yang diperkirakan mencapai Rp1.100 ... selektif dan terjaganya kualitas aset.</span></div><div class="ameta"><span class="abadge" style="background:#4ade8022;color:#4ade80">News</span><span class="asrc">tandaseru.id</span><span class="areason">Bank Mandiri termasuk bank penyalur kredit dengan kualitas aset</span></div><div class="abar"><div class="afill" style="width:70%;background:#4ade80"></div></div></div></div><div class="acard"><div class="ascore" style="color:#4ade80">7</div><div class="acontent"><div class="atitle"><a class="atitle-link" href="https://ekbis.harianjogja.com/r-1261011/dana-rp300-triliun-di-himbara-mulai-ditarik-dikembalikan-ke-bi" target="_blank" rel="noopener">Bank Mandiri , BNI, BRI, serta sebagian ke</a></div><div class="ameta"><span class="abadge" style="background:#4ade8022;color:#4ade80">News</span><span class="asrc">ekbis.harianjogja.com</span><span class="areason">Bank Mandiri menerima alokasi dana Rp75 triliun</span></div><div class="abar"><div class="afill" style="width:70%;background:#4ade80"></div></div><a class="alink" href="https://ekbis.harianjogja.com/r-1261011/dana-rp300-triliun-di-himbara-mulai-ditarik-dikembalikan-ke-bi" target="_blank" rel="noopener">↗ Buka artikel</a></div></div><div class="acard"><div class="ascore" style="color:#4ade80">7</div><div class="acontent"><div class="atitle"><span class="atitle-nolink">Jakarta Rp 1 triliun.</span></div><div class="ameta"><span class="abadge" style="background:#4ade8022;color:#4ade80">News</span><span class="asrc">jakarta365.net</span><span class="areason">Bank Mandiri injeksi modal Rp75 triliun</span></div><div class="abar"><div class="afill" style="width:70%;background:#4ade80"></div></div></div></div><div class="acard"><div class="ascore" style="color:#4ade80">7</div><div class="acontent"><div class="atitle"><span class="atitle-nolink">pasardana.id Tambah Investasi, Dirut</span></div><div class="ameta"><span class="abadge" style="background:#4ade8022;color:#4ade80">News</span><span class="asrc">nobartv.co.id</span><span class="areason">Dirut Bank Mandiri tambah investasi</span></div><div class="abar"><div class="afill" style="width:70%;background:#4ade80"></div></div></div></div><div class="acard"><div class="ascore" style="color:#4ade80">7</div><div class="acontent"><div class="atitle"><a class="atitle-link" href="https://www.medcom.id/ekonomi/bisnis/MkM57REk-npl-himbara-dan-mengapa-rasio-ini-penting-bagi-ekonomi" target="_blank" rel="noopener">Mandiri mencatat NPL Gross sebesar 0,98 persen pada kuartal I-2026. Direktur Corporate Banking</a></div><div class="ameta"><span class="abadge" style="background:#4ade8022;color:#4ade80">News</span><span class="asrc">medcom.id</span><span class="areason">NPL Gross 0,98% menunjukkan kualitas kredit Mandiri baik dan terkontrol.</span></div><div class="abar"><div class="afill" style="width:70%;background:#4ade80"></div></div><a class="alink" href="https://www.medcom.id/ekonomi/bisnis/MkM57REk-npl-himbara-dan-mengapa-rasio-ini-penting-bagi-ekonomi" target="_blank" rel="noopener">↗ Buka artikel</a></div></div><div class="acard"><div class="ascore" style="color:#4ade80">7</div><div class="acontent"><div class="atitle"><a class="atitle-link" href="https://www.msn.com/id-id/ekonomi/ekonomi/bank-mandiri-perluas-akses-kesehatan-lewat-mjm-2026-di-yogyakarta/ar-AA26p1JW" target="_blank" rel="noopener">Mandiri Bakti Kesehatan dan Literasi UMKM Pasar Ngasem,</a></div><div class="ameta"><span class="abadge" style="background:#4ade8022;color:#4ade80">News</span><span class="asrc">msn.com</span><span class="areason">Program CSR Mandiri mendukung kesehatan dan literasi UMKM komunitas.</span></div><div class="abar"><div class="afill" style="width:70%;background:#4ade80"></div></div><a class="alink" href="https://www.msn.com/id-id/ekonomi/ekonomi/bank-mandiri-perluas-akses-kesehatan-lewat-mjm-2026-di-yogyakarta/ar-AA26p1JW" target="_blank" rel="noopener">↗ Buka artikel</a></div></div>
+    <div class="art-hdr" style="color:#4ade80">▲ POSITIF &nbsp;<span id="pos-count"></span></div>
+    <div id="pos-list"></div>
   </div>
 
 </div>
 
-<section class="narrative-box"><div class="ntitle">📋 Ringkasan Naratif Eksekutif</div><p class="narrative-text">**RINGKASAN NARATIF EKSEKUTIF**<br><br>**Media Monitoring – 25 Juni 2026**<br><br><br><br>Sentimen media terhadap Bank Mandiri menunjukkan dominasi positif dengan perolehan 30 dari 39 artikel (77%). Tema dominan mencakup kinerja finansial yang kuat—terutama revenue Rp56,3 triliun tahun 2025 dan pembagian dividen Rp44,47 triliun—serta respons proaktif customer service dalam penyelesaian keluhan pelanggan. Narasi positif ini terutama bersumber dari media keuangan dan bisnis terkemuka.<br><br><br><br>Isu negatif (9 artikel) terkonsentrasi pada tiga area: (1) Dugaan penipuan mantan pegawai yang mendapat liputan tinggi (skor 8/10) di bisnisupdate.com dengan dukungan proses hukum dari Direktur Utama Bambang Budiono; (2) Tekanan penjualan saham BMRI merata dengan bank jumbo lainnya akibat pengumuman MSCI, termasuk masuk 10 saham terbanyak dilepas investor asing; (3) Masalah nasabah terkait Taspen Purwokerto yang melaporkan ke pihak berwenang. Ketiga isu memerlukan penanganan PR komunikasi untuk mitigasi opini publik.<br><br><br><br>Kekuatan brand positioning Mandiri terletak pada fundamental finansial solid dan kepercayaan stakeholder. Rekomendasi: (1) Transparansi penuh terkait kasus penipuan mantan pegawai melalui press release resmi; (2) Sorotan pada kinerja operasional dan dividend sustainability untuk stabilisasi sentimen investor; (3) Peningkatan visibilitas customer service excellence sebagai differentiator kompetitif.</p></section>
+<div class="narrative-box">
+  <div class="ntitle">📋 Ringkasan Naratif Eksekutif &nbsp;<small id="nar-day" style="font-weight:400;color:#64748b;font-size:.68rem"></small></div>
+  <div class="narrative-text" id="nar-text"></div>
+</div>
 
 <footer class="footer">
-  Powered by Claude AI (Anthropic) &nbsp;·&nbsp; Talkwalker Alerts &nbsp;·&nbsp; Google Alerts &nbsp;·&nbsp; ListenNotes
-  &nbsp;&nbsp;|&nbsp;&nbsp; Update otomatis setiap hari pukul 07.00 WIB via GitHub Actions
+  Powered by Claude AI (Anthropic) &nbsp;·&nbsp; Talkwalker · Google Alerts · ListenNotes
+  &nbsp;·&nbsp; Data historis tersimpan hingga 1 tahun &nbsp;·&nbsp; Update otomatis pukul 07.00 WIB
 </footer>
 
 <script>
-(function() {
-  var canvas = document.getElementById('donutCanvas');
-  if (!canvas) return;
-  var ctx = canvas.getContext('2d');
-  var cx = 60, cy = 60, r = 54, ir = 34;
-  var pctNeg = 23 / 100;
-  var pctPos = 77 / 100;
-  var gap = 0.05;
-  var s0 = -Math.PI / 2;
-  function arc(start, end, color) {
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, r, start, end);
-    ctx.arc(cx, cy, ir, end, start, true);
-    ctx.closePath();
-    ctx.fillStyle = color;
-    ctx.fill();
+const EMBEDDED=[{"run_date":"2026-06-25","title":"Mandiri Care ...Mandiri. Mohon kesediaannya dapat mengirimkan pesan gambar/capture terbaru melalui DM agar dibantu lebih lanjut ya. Semoga kejadian ini tidak mengurangi kepercayaan Sahabat terhadap","source":"twitter.com","sentiment":"positif","score":7,"reason":"Customer service responsif menangani keluhan pelanggan dengan profesional","media_type":"News","link":""},{"run_date":"2026-06-25","title":"Mandiri Care @08septgurl @08septgurl @08septgurl Halo Sahabat @08septgurl, mohon maaf atas ketidaknyamanannya terkait dengan kendala penerimaan kode OTP tersebut, sudah kami berikan jawaban, dimohon untuk melakukan pengecekan DM nya ya. Semoga kejadian ini tidak mengurangi kepercayaan Sahabat terhadap","source":"twitter.com","sentiment":"positif","score":7,"reason":"Mandiri Care proaktif menyelesaikan masalah teknis OTP pelanggan","media_type":"News","link":""},{"run_date":"2026-06-25","title":"bank mandiri , waktu itu transaksinya lsng di kantor cabang","source":"twitter.com","sentiment":"positif","score":6,"reason":"Pengalaman transaksi positif di cabang Bank Mandiri","media_type":"News","link":""},{"run_date":"2026-06-25","title":"Sentimen Positif Landa Bursa, IHSG Lonjak 2,69% Berkat Sektor Perbankan","source":"tandaseru.id","sentiment":"positif","score":8,"reason":"Sektor perbankan termasuk Mandiri menunjukkan kinerja gemilang di bursa","media_type":"News","link":"https://tandaseru.id/bisnis/sentimen-positif-landa-bursa-ihsg-lonjak-269-berkat-sektor-perbankan/"},{"run_date":"2026-06-25","title":"Pelindo Tingkatkan Literasi Keuangan Pekerja untuk Masa Depan Lebih Terencana","source":"seremonia.id","sentiment":"positif","score":6,"reason":"Bank Mandiri berkolaborasi meningkatkan literasi keuangan berkelanjutan","media_type":"News","link":"https://seremonia.id/industri/finansial/pelindo-tingkatkan-literasi-keuangan-pekerja-untuk-masa-depan-lebih-terencana/"},{"run_date":"2026-06-25","title":"Pas moins de 10 200 coureurs de 17 pays ont animé l’événement de course qui était de nouveau organisé par","source":"marathons.fr","sentiment":"positif","score":5,"reason":"Bank Mandiri sponsor event marathon internasional","media_type":"News","link":"https://www.marathons.fr/Mandiri-Jogja-Marathon-Victoires-pour-Kiprono-Koech-et-Eunice-Nyawira-Muchiri"},{"run_date":"2026-06-25","title":"BUMN menjadi sasaran utama penyaluran dana ini, yaitu","source":"tandaseru.id","sentiment":"positif","score":7,"reason":"Bank Mandiri sasaran penyaluran dana BUMN","media_type":"News","link":""},{"run_date":"2026-06-25","title":"Bank Central Asia Tbk (BBCA), semuanya mengalami koreksi harga.","source":"tandaseru.id","sentiment":"negatif","score":6,"reason":"Saham Bank Mandiri mengalami koreksi harga di pasar","media_type":"News","link":""},{"run_date":"2026-06-25","title":"Mandiri tahun 2025 yang menembus angka Rp56,3 triliun. Kinerja cemerlang","source":"tandaseru.id","sentiment":"positif","score":9,"reason":"Bank Mandiri raih revenue cemerlang Rp56,3 triliun tahun 2025","media_type":"News","link":""},{"run_date":"2026-06-25","title":"...Bambang Budiono, mendukung proses hukum terhadap dugaan penipuan oleh mantan pegawai","source":"bisnisupdate.com","sentiment":"negatif","score":8,"reason":"Dugaan penipuan oleh mantan pegawai Bank Mandiri merugai kepercayaan","media_type":"News","link":"https://bisnisupdate.com/berita-populer/pwri-banyumas-dukung-proses-hukum-bagi-kasus-penipuan-pensiunan/470999/"},{"run_date":"2026-06-25","title":"Mandiri , BRI, BNI, dan BTN) yang diperkirakan mencapai Rp1.100 ... selektif dan terjaganya kualitas aset.","source":"tandaseru.id","sentiment":"positif","score":7,"reason":"Bank Mandiri fokus selektif aset berkualitas target Rp1.100 triliun","media_type":"News","link":""},{"run_date":"2026-06-25","title":"Mandiri . Nasabah wajib info ke kasir dengan menunjukkan Email Blast untuk dapat... Jika nasabah eligible terkendala dan tidak menerima promo maka","source":"cgv.id","sentiment":"positif","score":5,"reason":"Promo nasabah Bank Mandiri, informasi promosi reguler","media_type":"News","link":"https://www.cgv.id/en/promotion/detail/PD202606241543042284/cgv-payday-promo-buy-1-get-2-with-mandiri-credit-card"},{"run_date":"2026-06-25","title":"nasional yang dikucurkan dana tersebut untuk mendukung likuiditas yakni","source":"mistar.id","sentiment":"positif","score":6,"reason":"Injeksi dana negara untuk likuiditas Bank Mandiri","media_type":"News","link":"https://mistar.id/news/ekonomi/kemenkeu-mulai-tarik-dana-sal-dari-bank-bumn"},{"run_date":"2026-06-25","title":"Hingga Rabu (24/6/2026) ... bermasalah yang menyeret nama mantan karyawan","source":"jogja.tribunnews.com","sentiment":"negatif","score":7,"reason":"Masalah yang menyeret nama mantan karyawan Bank Mandiri","media_type":"News","link":"https://jogja.tribunnews.com/jawa/1217313/25-pensiunan-merugi-rp5-miliar-dalam-kasus-mandiri-taspen-purwokerto"},{"run_date":"2026-06-25","title":"Bank Mandiri Tbk (BMRI) dengan nilai jual bersih Rp 71 miliar.","source":"jakarta365.net","sentiment":"negatif","score":5,"reason":"Aksi jual bersih Bank Mandiri Rp71 miliar oleh investor","media_type":"News","link":""},{"run_date":"2026-06-25","title":"Taspen Cabang Purwokerto segera melapor untuk mendukung...","source":"obnews.co","sentiment":"negatif","score":6,"reason":"Mantan pegawai Bank Mandiri lapor polisi terkait nasabah","media_type":"News","link":""},{"run_date":"2026-06-25","title":"Taspen Kantor Cabang Purwokerto terhadap sejumlah nasabah...","source":"obnews.co","sentiment":"negatif","score":6,"reason":"Pensiunan nasabah Bank Mandiri menghadapi masalah","media_type":"News","link":""},{"run_date":"2026-06-25","title":"Bank Mandiri , BNI, BRI, serta sebagian ke","source":"ekbis.harianjogja.com","sentiment":"positif","score":7,"reason":"Bank Mandiri termasuk distributor bantuan pemerintah Rp75 triliun","media_type":"News","link":"https://ekbis.harianjogja.com/r-1261011/dana-rp300-triliun-di-himbara-mulai-ditarik-dikembalikan-ke-bi"},{"run_date":"2026-06-25","title":"Jakarta Rp 1 triliun.","source":"jakarta365.net","sentiment":"positif","score":8,"reason":"Injeksi dana Rp75 triliun ke Bank Mandiri awal 2026","media_type":"News","link":""},{"run_date":"2026-06-25","title":"Mandiri , BRI, BNI, dan BTN. Menteri ... selektif dan kualitas aset terjaga","source":"mediaindonesia.com","sentiment":"positif","score":8,"reason":"Bank Mandiri menerima Rp55 triliun, aset terjaga berkualitas","media_type":"News","link":""},{"run_date":"2026-06-25","title":"(Rp55 triliun), BNI (Rp55 triliun), BRI (Rp55 triliun), BTN (Rp25 triliun) dan BSI (Rp10 triliun).","source":"finansial.bisnis.com","sentiment":"positif","score":9,"reason":"Bank Mandiri terima injeksi Rp76 triliun dari pemerintah","media_type":"News","link":""},{"run_date":"2026-06-25","title":"pasardana.id Tambah Investasi, Dirut","source":"nobartv.co.id","sentiment":"positif","score":6,"reason":"Dirut Bank Mandiri tambah investasi, pertumbuhan bisnis","media_type":"News","link":""},{"run_date":"2026-06-25","title":"Mandiri Tbk, misalnya, menyetujui pembagian dividen sebesar Rp44,47 triliun atau ... mencapai Rp56,3 triliun. Kinerja positif","source":"mediaindonesia.com","sentiment":"positif","score":9,"reason":"Bank Mandiri bagikan dividen Rp44,47 triliun, kinerja positif","media_type":"News","link":""},{"run_date":"2026-06-25","title":"mandiri menghubungi saya dan... Untuk itu pula saya mengucapkan terima kasih kepada pihak kartu kredit","source":"mediakonsumen.com","sentiment":"positif","score":6,"reason":"Pelanggan mengucapkan terima kasih atas layanan kartu kredit Mandiri","media_type":"News","link":""},{"run_date":"2026-06-25","title":"Taspen Cabang Purwokerto mulai banyak bermunculan di berbagai titik...","source":"banyumas.tribunnews.com","sentiment":"negatif","score":8,"reason":"Aksi damai protes pensiunan nasabah Bank Mandiri mengenai Taspen","media_type":"News","link":"https://banyumas.tribunnews.com/news/93286/ajak-cucu-demo-mandiri-taspen-122-pensiunan-tagih-lenyapnya-rp258-m"},{"run_date":"2026-06-25","title":"Tekanan jual terjadi merata pada saham-saham perbankan jumbo. Saham PT","source":"keuangan.kontan.co.id","sentiment":"negatif","score":7,"reason":"Tekanan jual pada saham Bank Mandiri di bursa saham","media_type":"News","link":""},{"run_date":"2026-06-25","title":"Mandiri ... nasabah prioritas dan wealth management.","source":"keuangan.kontan.co.id","sentiment":"positif","score":5,"reason":"Layanan nasabah prioritas dan wealth management Mandiri","media_type":"News","link":""},{"run_date":"2026-06-25","title":"Mandiri menyalurkan dividen interim tahun buku 2025. Langkah ini mencerminkan fundamental perseroan yang tetap solid, likuiditas yang terjaga, serta konsistensi kinerja","source":"metrotvnews.com","sentiment":"positif","score":9,"reason":"Mandiri menyalurkan dividen interim mencerminkan fundamental solid","media_type":"News","link":"https://www.metrotvnews.com/read/bJECjP5q-himbara-sebar-dividen-dari-laba-2025-segini-besarannya"},{"run_date":"2026-06-25","title":"Mandiri mencatat NPL Gross sebesar 0,98 persen pada kuartal I-2026. Direktur Corporate Banking","source":"medcom.id","sentiment":"positif","score":8,"reason":"NPL Gross rendah 0,98% kuartal I-2026 menunjukkan kualitas kredit baik","media_type":"News","link":"https://www.medcom.id/ekonomi/bisnis/MkM57REk-npl-himbara-dan-mengapa-rasio-ini-penting-bagi-ekonomi"},{"run_date":"2026-06-25","title":"Mandiri (Persero) Tbk (BMRI), Riduan, menambah kepemilikan saham perseroan di... Ia juga menegaskan statusnya sebagai anggota direksi","source":"wartaekonomi.co.id","sentiment":"positif","score":4,"reason":"Anggota direksi menambah kepemilikan saham Mandiri","media_type":"News","link":""},{"run_date":"2026-06-25","title":"10 Indonesian Stocks Most Sold by Foreign Investors Following MSCI Announcement (June 24, 2026)","source":"databoks.katadata.co.id","sentiment":"negatif","score":6,"reason":"Bank Mandiri termasuk saham paling banyak dilepas investor asing","media_type":"News","link":"https://databoks.katadata.co.id/en/market/statistics/6a3bba5f00c76/10-indonesian-stocks-most-sold-by-foreign-investors-following-msci-announcement-june-24-2026"},{"run_date":"2026-06-25","title":"10 Saham Paling Banyak Dilepas Investor Asing Usai Pengumuman MSCI (24 Juni 2026)","source":"databoks.katadata.co.id","sentiment":"negatif","score":6,"reason":"Bank Mandiri termasuk saham paling banyak dilepas investor asing MSCI","media_type":"News","link":"https://databoks.katadata.co.id/pasar/statistik/6a3bba5f00c76/10-saham-paling-banyak-dilepas-investor-asing-usai-pengumuman-msci-24-juni-2026"},{"run_date":"2026-06-25","title":"Mandiri Bakti Kesehatan dan Literasi UMKM Pasar Ngasem,","source":"msn.com","sentiment":"positif","score":7,"reason":"Program CSR Mandiri untuk kesehatan dan literasi UMKM masyarakat","media_type":"News","link":"https://www.msn.com/id-id/ekonomi/ekonomi/bank-mandiri-perluas-akses-kesehatan-lewat-mjm-2026-di-yogyakarta/ar-AA26p1JW"}];
+const NAR=`**RINGKASAN NARATIF EKSEKUTIF**<br>Media Monitoring – 25 Juni 2026<br><br>Sentimen media terhadap Bank Mandiri hari ini menunjukkan dominasi positif dengan rasio 23 berita positif terhadap 10 berita negatif dari total 33 artikel. Narasi utama berfokus pada kinerja finansial kuat dan kepercayaan investor, namun diiringi isu kredibilitas yang memerlukan penanganan cepat.<br><br>Isu negatif terkonsentrasi pada: (1) dugaan penipuan oleh mantan pegawai yang merugikan kepercayaan nasabah, (2) aksi protes pensiunan Taspen Purwokerto terkait masalah layanan, (3) tekanan jual saham Mandiri di bursa (koreksi harga dan penjualan investor asing masif). Ketiga isu ini mengindikasikan potensi damage pada reputasi internal dan kepercayaan pasar modal.<br><br>Sisi positif didominasi pencapaian finansial: revenue Rp56,3 triliun (2025), dividen Rp44,47 triliun, dan NPL Gross rendah 0,98% menunjukkan fundamentals solid. Rekomendasi: (1) segera release statement manajemen terkait dugaan penipuan dengan timeline jelas investigasi, (2) komunikasi proaktif ke pensiunan Taspen untuk resolusi, (3) investor briefing menekankan resiliensi aset dan likuiditas untuk stabilisasi sentimen pasar modal.`;
+const RUN_DATE='2026-06-25';
+
+const TC={"News":"#58A6FF","Blog":"#4ade80","Twitter":"#1D9BF0","Podcast":"#BC8CFF","Google Alerts":"#F0A500","E-Commerce":"#f87171"};
+let ALL=EMBEDDED;
+
+async function init(){
+  try{const r=await fetch('./articles.json');if(r.ok)ALL=await r.json();}catch(e){}
+  render(1);
+}
+
+function setFilter(btn,days){
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  render(days);
+}
+
+function getCutoff(days){
+  const d=new Date();d.setDate(d.getDate()-days);return d.toISOString().split('T')[0];
+}
+
+function render(days){
+  const arts=ALL.filter(a=>a.run_date>=getCutoff(days));
+  const neg=arts.filter(a=>a.sentiment==='negatif').sort((a,b)=>b.score-a.score);
+  const pos=arts.filter(a=>a.sentiment==='positif').sort((a,b)=>b.score-a.score);
+  const tot=arts.length,nN=neg.length,nP=pos.length;
+  const pP=tot?Math.round(nP/tot*100):0,pN=100-pP;
+  const sentColor=pP>=60?'#4ade80':(pP<40?'#f87171':'#fbbf24');
+  const sentLabel=pP>=60?'POSITIF ✅':(pP<40?'NEGATIF ⚠️':'NETRAL ⚡');
+
+  // filter info
+  const dates=[...new Set(arts.map(a=>a.run_date))].sort();
+  const lbls={1:'Kemarin',7:'7 hari',30:'30 hari',90:'3 bulan',180:'6 bulan',365:'1 tahun'};
+  const info=days===1?(dates.length?'Data: '+fd(dates[dates.length-1]):'Tidak ada data')
+    :(lbls[days]||days+' hari')+' terakhir · '+dates.length+' hari data';
+  gi('filter-info').textContent=info;
+
+  // stats cards
+  const srcSet=new Set(arts.map(a=>a.source).filter(Boolean));
+  gi('s-total').textContent=tot.toLocaleString('id');
+  gi('s-neg').textContent=nN.toLocaleString('id');
+  gi('s-pos').textContent=nP.toLocaleString('id');
+  gi('s-pct').textContent=pP+'%';gi('s-pct').style.color=sentColor;
+  gi('s-sources').textContent=srcSet.size.toLocaleString('id');
+
+  // donut & legend
+  gi('dpct').textContent=pP+'%';gi('dpct').style.color=sentColor;
+  gi('dlbl').textContent=sentLabel;gi('dlbl').style.color=sentColor;
+  gi('leg-neg').textContent='Negatif '+nN+' ('+pN+'%)';
+  gi('leg-pos').textContent='Positif '+nP+' ('+pP+'%)';
+  drawDonut(pP);
+
+  // per tipe media
+  const td={};
+  arts.forEach(a=>{const m=a.media_type||'News';if(!td[m])td[m]={t:0,n:0,p:0};td[m].t++;
+    if(a.sentiment==='negatif')td[m].n++;if(a.sentiment==='positif')td[m].p++;});
+  gi('tipe-rows').innerHTML=Object.entries(td).sort((a,b)=>b[1].t-a[1].t).map(([m,d])=>{
+    const c=TC[m]||'#8B949E';
+    return `<div class="tipe-row"><span><span class="mdot" style="background:${c}"></span>`
+      +`<span style="color:${c}">${esc(m)}</span></span>`
+      +`<span style="text-align:center;color:#e2e8f0">${d.t}</span>`
+      +`<span style="text-align:center;color:#f87171">${d.n||'·'}</span>`
+      +`<span style="text-align:center;color:#4ade80">${d.p||'·'}</span></div>`;
+  }).join('');
+
+  // media sources
+  const sc={},sn={},sp={};
+  arts.forEach(a=>{const s=a.source;if(!s)return;sc[s]=(sc[s]||0)+1;
+    if(a.sentiment==='negatif')sn[s]=(sn[s]||0)+1;
+    if(a.sentiment==='positif')sp[s]=(sp[s]||0)+1;});
+  gi('src-scroll').innerHTML=Object.entries(sc).sort((a,b)=>b[1]-a[1]).slice(0,20).map(([s,c])=>
+    `<div class="mrow"><span class="msrc" title="${esc(s)}">${esc(s)}</span>`
+    +`<span class="mtot">${c}</span><span class="mneg">${sn[s]||'·'}</span>`
+    +`<span class="mpos">${sp[s]||'·'}</span></div>`
+  ).join('');
+
+  // articles
+  renderArts(neg.slice(0,10),'neg-list','neg-count','#f87171');
+  renderArts(pos.slice(0,10),'pos-list','pos-count','#4ade80');
+
+  // narrative
+  if(NAR){
+    gi('nar-day').textContent=days===1?'':`(Narasi: hari terakhir — ${fd(RUN_DATE)})`;
+    gi('nar-text').innerHTML=NAR;
   }
-  ctx.fillStyle = '#0f172a';
-  ctx.fillRect(0, 0, 120, 120);
-  if (pctNeg > 0.01) arc(s0, s0 + Math.PI * 2 * pctNeg - gap, '#f87171');
-  if (pctPos > 0.01) arc(s0 + Math.PI * 2 * pctNeg + gap, s0 + Math.PI * 2 - gap, '#4ade80');
-})();
+}
+
+function renderArts(items,listId,countId,color){
+  gi(countId).textContent='('+items.length+' artikel)';
+  if(!items.length){gi(listId).innerHTML='<div class="empty">Tidak ada berita dalam kategori ini</div>';return;}
+  gi(listId).innerHTML=items.map(a=>{
+    const w=(a.score/10*100).toFixed(0);
+    const d=a.run_date?fd(a.run_date):'';
+    const th=a.link?`<a class="atitle-link" href="${esc(a.link)}" target="_blank" rel="noopener">${esc(a.title)}</a>`
+      :`<span class="atitle-nolink">${esc(a.title)}</span>`;
+    const lh=a.link?`<a class="alink" href="${esc(a.link)}" target="_blank" rel="noopener">↗ Buka artikel</a>`:'';
+    return `<div class="acard"><div class="ascore" style="color:${color}">${a.score}</div>`
+      +`<div class="acontent"><div class="adate">${d}</div>${th}`
+      +`<div class="asrc">${esc(a.source||'')} <span class="areason">${esc(a.reason||'')}</span></div>`
+      +`<div class="abar"><div class="afill" style="width:${w}%;background:${color}"></div></div>${lh}</div></div>`;
+  }).join('');
+}
+
+function drawDonut(pctPos){
+  const cv=document.getElementById('donutCanvas');if(!cv)return;
+  const ctx=cv.getContext('2d');
+  const cx=60,cy=60,r=54,ir=34,gap=0.05,s0=-Math.PI/2;
+  const pn=(100-pctPos)/100,pp=pctPos/100;
+  function arc(s,en,col){ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,s,en);
+    ctx.arc(cx,cy,ir,en,s,true);ctx.closePath();ctx.fillStyle=col;ctx.fill();}
+  ctx.fillStyle='#0f172a';ctx.fillRect(0,0,120,120);
+  if(pn>0.01)arc(s0,s0+Math.PI*2*pn-gap,'#f87171');
+  if(pp>0.01)arc(s0+Math.PI*2*pn+gap,s0+Math.PI*2-gap,'#4ade80');
+}
+
+function gi(id){return document.getElementById(id);}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function fd(iso){if(!iso)return'';const[y,m,d]=iso.split('-');
+  const mn=['','Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  return parseInt(d)+' '+(mn[parseInt(m)]||m)+' '+y;}
+
+init();
 </script>
 </body>
 </html>
