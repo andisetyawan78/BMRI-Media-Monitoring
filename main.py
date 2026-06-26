@@ -1697,16 +1697,19 @@ async function init(){
       fetch('./articles.json').then(r=>r.ok?r.json():null).catch(()=>null),
       fetch('./narratives.json').then(r=>r.ok?r.json():null).catch(()=>null)
     ]);
-    if(artRes)ALL=artRes;
+    if(artRes&&artRes.length)ALL=artRes;
     if(narRes)NARRATIVES=narRes;
   }catch(e){}
-  render(1);
+  try{render(currentDays);}catch(e){gi('filter-info').textContent='Error: '+e.message;}
 }
+
+let currentDays=1;
 
 function setFilter(btn,days){
   document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  render(days);
+  currentDays=days;
+  try{render(days);}catch(e){gi('filter-info').textContent='Error: '+e.message;}
 }
 
 function getCutoff(days){
@@ -1884,6 +1887,9 @@ function fd(iso){if(!iso)return'';const[y,m,d]=iso.split('-');
   const mn=['','Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
   return parseInt(d)+' '+(mn[parseInt(m)]||m)+' '+y;}
 
+// Render data EMBEDDED langsung (synchronous) — pastikan ada sesuatu yang tampil
+try{render(1);}catch(e){if(gi('filter-info'))gi('filter-info').textContent='Error: '+e.message;}
+// Load articles.json + narratives.json di background, re-render setelah dapat data
 init();
 """
 
