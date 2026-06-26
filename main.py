@@ -36,6 +36,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+from matplotlib.gridspec import GridSpec
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -211,6 +212,39 @@ def html_to_text(html):
     return text.strip()
 
 
+def extract_talkwalker_links(html):
+    """
+    Ekstrak semua link artikel dari HTML Talkwalker email.
+    Return dict: {anchor_text_normalized -> url}
+    """
+    from urllib.parse import unquote
+    tag_re  = re.compile(r"<[^>]+>")
+    link_re = re.compile(
+        r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+        re.DOTALL | re.IGNORECASE,
+    )
+    # Domain/pola yang harus dilewati (internal/tracking Talkwalker)
+    SKIP = {
+        "talkwalker.com", "google.com/", "twitter.com", "facebook.com",
+        "linkedin.com", "unsubscribe", "campaign", "/track", "click.",
+        "mailto:", "javascript:", "#",
+    }
+    link_map = {}
+    for m in link_re.finditer(html):
+        url    = m.group(1).strip()
+        anchor = tag_re.sub("", m.group(2)).strip()
+        anchor = re.sub(r"\s+", " ", anchor)
+        if not url.startswith("http") or not anchor or len(anchor) < 8:
+            continue
+        if any(s in url.lower() for s in SKIP):
+            continue
+        # Normalize untuk matching
+        key = re.sub(r"[^\w\s]", "", anchor.lower()).strip()[:100]
+        if key:
+            link_map[key] = url
+    return link_map
+
+
 def parse_articles(html_bodies):
     """
     Parse artikel dari HTML email Talkwalker.
@@ -239,6 +273,9 @@ def parse_articles(html_bodies):
     NOISE_RE = re.compile(r"^\d+\s+new results?$", re.IGNORECASE)
 
     for html in html_bodies:
+        # Ekstrak link map sebelum HTML di-strip ke plain text
+        link_map = extract_talkwalker_links(html)
+
         text = html_to_text(html)
         # Collapse tab/spasi ganda tapi jaga newline
         text = re.sub(r"[ \t]{2,}", " ", text)
@@ -330,12 +367,26 @@ def parse_articles(html_bodies):
             if any(s in title.lower() for s in skip_titles):
                 continue
 
+            # Cari URL yang cocok dari link_map
+            title_key = re.sub(r"[^\w\s]", "", title.lower()).strip()[:100]
+            article_link = ""
+            if title_key in link_map:
+                article_link = link_map[title_key]
+            else:
+                # Partial match: cari key yang paling mirip (prefix 25 karakter)
+                prefix = title_key[:25]
+                for key, url in link_map.items():
+                    if len(key) > 15 and key.startswith(prefix[:15]):
+                        article_link = url
+                        break
+
             articles.append({
                 "title"      : title,
                 "snippet"    : snippet,
                 "date"       : date,
                 "source"     : source.strip(),
                 "media_type" : media_type,
+                "link"       : article_link,
             })
 
     # Deduplikasi berdasarkan judul
@@ -666,85 +717,235 @@ Maksimal 200 kata total. Langsung ke inti, tanpa pembuka seperti "Berikut ringka
 # 5. BUAT GRAFIK SENTIMEN
 # ─────────────────────────────────────────────
 def generate_chart(articles, output_path):
-    """Buat grafik batang horizontal sentimen + skor, simpan ke output_path."""
-    negatif = sorted(
+    """
+    Buat grafik 2-panel sentimen:
+      Kiri : Donut chart ringkasan + stats per tipe media
+      Kanan: Diverging horizontal bar chart top artikel (negatif kiri, positif kanan)
+    """
+    BG        = "#0D1117"
+    CARD_BG   = "#161B22"
+    NEG_C     = "#F85149"
+    POS_C     = "#3FB950"
+    TEXT_C    = "#E6EDF3"
+    MUTED_C   = "#8B949E"
+    GRID_C    = "#21262D"
+
+    negatif_all = sorted(
         [a for a in articles if a.get("sentiment") == "negatif"],
-        key=lambda x: x["score"], reverse=True
+        key=lambda x: x.get("score", 0), reverse=True,
     )
-    positif = sorted(
+    positif_all = sorted(
         [a for a in articles if a.get("sentiment") == "positif"],
-        key=lambda x: x["score"], reverse=True
+        key=lambda x: x.get("score", 0), reverse=True,
+    )
+    total    = len(articles)
+    n_neg    = len(negatif_all)
+    n_pos    = len(positif_all)
+    pct_pos  = round(n_pos / total * 100) if total else 0
+    pct_neg  = 100 - pct_pos
+
+    # Top 12 per sisi untuk bar chart
+    negatif = negatif_all[:12]
+    positif = positif_all[:12]
+
+    yesterday = (datetime.date.today() - datetime.timedelta(days=1)).strftime("%d %B %Y")
+
+    # ── Layout ──────────────────────────────────────────
+    bar_rows = max(len(negatif), len(positif), 6)
+    fig_h    = max(10, bar_rows * 0.55 + 5)
+    fig      = plt.figure(figsize=(20, fig_h), facecolor=BG)
+
+    # GridSpec: kiri 28%, kanan 72%
+    gs = GridSpec(
+        3, 2,
+        figure=fig,
+        width_ratios=[1, 2.6],
+        height_ratios=[0.08, 1, 0.55],
+        hspace=0.05,
+        wspace=0.08,
+        left=0.02, right=0.98,
+        top=0.93, bottom=0.06,
     )
 
-    # Batasi tampilan ke top 10 masing-masing
-    negatif = negatif[:10]
-    positif = positif[:10]
+    # ── JUDUL UTAMA ──────────────────────────────────────
+    fig.text(
+        0.5, 0.965,
+        f"📊  Media Monitoring Bank Mandiri (BMRI)  —  {yesterday}",
+        ha="center", va="center",
+        fontsize=15, fontweight="bold", color=TEXT_C,
+    )
+    fig.text(
+        0.5, 0.945,
+        f"Total {total} artikel dianalisis oleh Claude AI",
+        ha="center", va="center",
+        fontsize=9, color=MUTED_C,
+    )
 
-    items  = negatif + positif
+    # ═══════════════════════════════════════════════════
+    # PANEL KIRI — Donut + Stats per media
+    # ═══════════════════════════════════════════════════
+    ax_donut = fig.add_subplot(gs[1, 0], facecolor=CARD_BG)
+
+    # Donut
+    wedge_sizes   = [n_neg, n_pos] if total else [1, 1]
+    wedge_colors  = [NEG_C, POS_C]
+    wedge_labels  = ["", ""]
+    wedges, _     = ax_donut.pie(
+        wedge_sizes, colors=wedge_colors, labels=wedge_labels,
+        startangle=90, counterclock=False,
+        wedgeprops=dict(width=0.42, edgecolor=CARD_BG, linewidth=3),
+    )
+    # Teks tengah donut
+    overall_label = "POSITIF ✓" if pct_pos >= 60 else ("NEGATIF !" if pct_neg > 60 else "NETRAL ~")
+    overall_color = POS_C if pct_pos >= 60 else (NEG_C if pct_neg > 60 else "#F0A500")
+    ax_donut.text(0, 0.12, f"{pct_pos}%", ha="center", va="center",
+                  fontsize=22, fontweight="bold", color=overall_color)
+    ax_donut.text(0, -0.18, overall_label, ha="center", va="center",
+                  fontsize=8, fontweight="bold", color=overall_color)
+
+    ax_donut.set_title("Sentimen Keseluruhan", fontsize=9.5, color=TEXT_C,
+                       fontweight="bold", pad=8)
+    # Legenda donut
+    ax_donut.legend(
+        [f"Negatif  {n_neg} artikel ({pct_neg}%)",
+         f"Positif   {n_pos} artikel ({pct_pos}%)"],
+        loc="lower center", bbox_to_anchor=(0.5, -0.12),
+        fontsize=8, framealpha=0, labelcolor=[NEG_C, POS_C],
+        handlelength=1.2, handleheight=1,
+    )
+
+    # ── Stats per media type ─────────────────────────
+    ax_media = fig.add_subplot(gs[2, 0], facecolor=CARD_BG)
+    ax_media.axis("off")
+
+    media_types = ["News", "Blog", "Twitter", "Google Alerts", "Podcast", "E-Commerce"]
+    MTYPE_COLOR = {
+        "News": "#58A6FF", "Blog": "#3FB950", "Twitter": "#1D9BF0",
+        "Google Alerts": "#F0A500", "Podcast": "#BC8CFF", "E-Commerce": "#FF7B72",
+    }
+    rows_data = []
+    for mt in media_types:
+        sub  = [a for a in articles if a.get("media_type") == mt]
+        if not sub:
+            continue
+        neg_c = sum(1 for a in sub if a.get("sentiment") == "negatif")
+        pos_c = len(sub) - neg_c
+        rows_data.append((mt, len(sub), neg_c, pos_c))
+
+    if rows_data:
+        ax_media.set_title("Distribusi per Tipe Media", fontsize=9.5,
+                           color=TEXT_C, fontweight="bold", pad=6)
+        col_x  = [0.03, 0.52, 0.70, 0.88]
+        headers = ["Tipe Media", "Total", "Neg", "Pos"]
+        for xi, h in zip(col_x, headers):
+            ax_media.text(xi, 0.95, h, transform=ax_media.transAxes,
+                          fontsize=7.5, color=MUTED_C, fontweight="bold")
+        ax_media.axhline(y=0.90, xmin=0, xmax=1, color=GRID_C,
+                         linewidth=0.8, transform=ax_media.transAxes)
+        step = 0.88 / (len(rows_data) + 0.5)
+        for r_i, (mt, tot, neg_c, pos_c) in enumerate(rows_data):
+            y = 0.88 - r_i * step
+            c = MTYPE_COLOR.get(mt, TEXT_C)
+            ax_media.text(col_x[0], y, mt, transform=ax_media.transAxes,
+                          fontsize=7.5, color=c, va="center")
+            ax_media.text(col_x[1], y, str(tot), transform=ax_media.transAxes,
+                          fontsize=7.5, color=TEXT_C, va="center", ha="center")
+            ax_media.text(col_x[2], y, str(neg_c), transform=ax_media.transAxes,
+                          fontsize=7.5, color=NEG_C, va="center", ha="center")
+            ax_media.text(col_x[3], y, str(pos_c), transform=ax_media.transAxes,
+                          fontsize=7.5, color=POS_C, va="center", ha="center")
+
+    # ═══════════════════════════════════════════════════
+    # PANEL KANAN — Diverging bar chart
+    # ═══════════════════════════════════════════════════
+    ax_bar = fig.add_subplot(gs[1:, 1], facecolor=CARD_BG)
+
     labels = []
     scores = []
     colors = []
 
     for a in negatif:
-        title = a["title"][:50] + "…" if len(a["title"]) > 50 else a["title"]
-        labels.append(f"[{a['source'][:15]}] {title}")
-        scores.append(-a["score"])   # negatif ke kiri
-        colors.append("#E24B4A")
+        t = a["title"]
+        t = t[:62] + "…" if len(t) > 62 else t
+        labels.append(f"  {t}  [{a['source'][:18]}]")
+        scores.append(-a.get("score", 0))
+        colors.append(NEG_C)
+
+    # Spacer antar negatif dan positif
+    if negatif and positif:
+        labels.append("")
+        scores.append(0)
+        colors.append(BG)
 
     for a in positif:
-        title = a["title"][:50] + "…" if len(a["title"]) > 50 else a["title"]
-        labels.append(f"[{a['source'][:15]}] {title}")
-        scores.append(a["score"])    # positif ke kanan
-        colors.append("#639922")
+        t = a["title"]
+        t = t[:62] + "…" if len(t) > 62 else t
+        labels.append(f"  {t}  [{a['source'][:18]}]")
+        scores.append(a.get("score", 0))
+        colors.append(POS_C)
 
-    n      = len(labels)
-    height = max(6, n * 0.45 + 2)
+    n = len(labels)
+    y_pos = list(range(n))
 
-    fig, ax = plt.subplots(figsize=(14, height))
-    fig.patch.set_facecolor("#FAFAFA")
-    ax.set_facecolor("#FAFAFA")
+    bars = ax_bar.barh(y_pos, scores, color=colors, height=0.7,
+                       zorder=3, edgecolor="none")
 
-    bars = ax.barh(range(n), scores, color=colors, height=0.65, zorder=3)
+    # Score label di ujung bar
+    for i, (bar, score, c) in enumerate(zip(bars, scores, colors)):
+        if score == 0:
+            continue
+        val  = abs(score)
+        xoff = 0.18 if score > 0 else -0.18
+        ha   = "left" if score > 0 else "right"
+        ax_bar.text(bar.get_width() + xoff, i, str(val),
+                    va="center", ha=ha, fontsize=8.5,
+                    color=c, fontweight="bold")
 
-    # Label skor di ujung bar
-    for i, (bar, score) in enumerate(zip(bars, scores)):
-        val   = abs(score)
-        xpos  = bar.get_width() + (0.15 if score >= 0 else -0.15)
-        ha    = "left" if score >= 0 else "right"
-        color = "#3B6D11" if score >= 0 else "#A32D2D"
-        ax.text(xpos, i, str(val), va="center", ha=ha, fontsize=8,
-                color=color, fontweight="bold")
+    # Section label "▼ NEGATIF" dan "▲ POSITIF"
+    if negatif:
+        mid_neg = (len(negatif) - 1) / 2
+        ax_bar.text(-10.5, mid_neg, f"▼ NEGATIF\n({n_neg} artikel)",
+                    ha="left", va="center", fontsize=8, color=NEG_C,
+                    fontweight="bold",
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor=BG, alpha=0.7))
+    if positif:
+        spacer = 1 if negatif else 0
+        mid_pos = len(negatif) + spacer + (len(positif) - 1) / 2
+        ax_bar.text(10.5, mid_pos, f"▲ POSITIF\n({n_pos} artikel)",
+                    ha="right", va="center", fontsize=8, color=POS_C,
+                    fontweight="bold",
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor=BG, alpha=0.7))
 
-    ax.set_yticks(range(n))
-    ax.set_yticklabels(labels, fontsize=7.5)
-    ax.axvline(0, color="#888", linewidth=0.8, zorder=2)
-    ax.set_xlim(-11, 11)
-    ax.set_xticks([-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10])
-    ax.set_xticklabels(
-        ["10","8","6","4","2","0","2","4","6","8","10"], fontsize=8
+    ax_bar.set_yticks(y_pos)
+    ax_bar.set_yticklabels(labels, fontsize=7.8, color=TEXT_C)
+    ax_bar.set_xlim(-12, 12)
+    ax_bar.set_xticks([-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10])
+    ax_bar.set_xticklabels(
+        ["10", "8", "6", "4", "2", "0", "2", "4", "6", "8", "10"],
+        fontsize=8, color=MUTED_C,
     )
-    ax.grid(axis="x", color="#DDDDDD", linewidth=0.5, zorder=1)
-    ax.spines[["top","right","left","bottom"]].set_visible(False)
-    ax.tick_params(axis="y", length=0)
+    ax_bar.axvline(0, color=MUTED_C, linewidth=1.2, zorder=4)
+    ax_bar.grid(axis="x", color=GRID_C, linewidth=0.6, zorder=1)
+    ax_bar.spines[:].set_visible(False)
+    ax_bar.tick_params(axis="y", length=0, pad=2)
+    ax_bar.tick_params(axis="x", colors=MUTED_C, length=3)
+    ax_bar.set_facecolor(CARD_BG)
 
-    yesterday = (datetime.date.today() - datetime.timedelta(days=1)).strftime("%d %B %Y")
-    ax.set_title(
-        f"Bank Mandiri (BMRI) — Analisis Sentimen Media\n{yesterday}",
-        fontsize=12, fontweight="bold", pad=14, color="#222222"
+    ax_bar.set_title(
+        f"Top Artikel — Skor Sentimen (1–10)",
+        fontsize=10, color=TEXT_C, fontweight="bold", pad=10,
+    )
+    ax_bar.set_xlabel("◄ Skor Negatif          |          Skor Positif ►",
+                      fontsize=8, color=MUTED_C, labelpad=6)
+
+    # Footer
+    fig.text(
+        0.5, 0.025,
+        "Analisis otomatis oleh Claude AI (Anthropic)  ·  Sumber: Talkwalker Alerts · Google Alerts · ListenNotes",
+        ha="center", fontsize=7.5, color=MUTED_C,
     )
 
-    neg_patch = mpatches.Patch(color="#E24B4A", label=f"Negatif ({len(negatif)})")
-    pos_patch = mpatches.Patch(color="#639922", label=f"Positif ({len(positif)})")
-    ax.legend(handles=[neg_patch, pos_patch], loc="lower right",
-              fontsize=9, framealpha=0.7)
-
-    ax.text(0.02, -0.04,
-            "Skor 1–10 | Sumber: Talkwalker Alerts | Analisis: Claude AI",
-            transform=ax.transAxes, fontsize=7, color="#888888")
-
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches="tight",
-                facecolor=fig.get_facecolor())
+    plt.savefig(output_path, dpi=150, bbox_inches="tight", facecolor=BG)
     plt.close()
     print(f"[Chart] Grafik disimpan: {output_path}")
 
