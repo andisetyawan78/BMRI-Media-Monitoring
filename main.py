@@ -1499,301 +1499,402 @@ def generate_excel_report(articles, date_str):
 
 
 # ─────────────────────────────────────────────
-# 8b. GENERATE TV DASHBOARD (GitHub Pages)
+# 8b. SAVE ARTICLES HISTORY (docs/articles.json)
+# ─────────────────────────────────────────────
+def save_articles_history(articles, date_str, narrative, docs_dir):
+    """Simpan artikel harian ke docs/articles.json (akumulatif, max 1 tahun)."""
+    import json as _json
+    from datetime import datetime as _dt, timedelta as _td
+
+    os.makedirs(docs_dir, exist_ok=True)
+    json_path = os.path.join(docs_dir, "articles.json")
+
+    try:
+        run_date = _dt.strptime(date_str, "%d %B %Y").strftime("%Y-%m-%d")
+    except Exception:
+        run_date = _dt.now().strftime("%Y-%m-%d")
+
+    history = []
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                history = _json.load(f)
+        except Exception:
+            history = []
+
+    # Hapus data tanggal yang sama (re-run idempoten)
+    history = [a for a in history if a.get("run_date") != run_date]
+
+    # Tambah artikel hari ini
+    for a in articles:
+        history.append({
+            "run_date":   run_date,
+            "title":      a.get("title", ""),
+            "source":     a.get("source", ""),
+            "sentiment":  a.get("sentiment", ""),
+            "score":      a.get("score", 0),
+            "reason":     a.get("reason", ""),
+            "media_type": a.get("media_type", "News"),
+            "link":       a.get("link", ""),
+        })
+
+    # Hapus data lebih dari 366 hari
+    cutoff_date = (_dt.now() - _td(days=366)).strftime("%Y-%m-%d")
+    history = [a for a in history if a.get("run_date", "") >= cutoff_date]
+    history.sort(key=lambda x: x.get("run_date", ""), reverse=True)
+
+    with open(json_path, "w", encoding="utf-8") as f:
+        _json.dump(history, f, ensure_ascii=False, separators=(",", ":"))
+
+    if narrative:
+        nar_path = os.path.join(docs_dir, "narrative_latest.json")
+        with open(nar_path, "w", encoding="utf-8") as f:
+            _json.dump({"date": run_date, "text": narrative}, f, ensure_ascii=False)
+
+    oldest = history[-1]["run_date"] if history else "-"
+    print(f"  ✅ Historis: {len(history)} artikel tersimpan (sejak {oldest})")
+    return run_date
+
+
+# ─────────────────────────────────────────────
+# 8c. GENERATE TV DASHBOARD (GitHub Pages)
 # ─────────────────────────────────────────────
 def generate_tv_dashboard(articles, date_str, chart_path=None, narrative=None):
     """
-    Generate HTML dashboard TV-friendly untuk GitHub Pages.
-    Layout: 3-kolom (kiri: sentimen+media, tengah: negatif, kanan: positif).
-    Ringkasan naratif di bawah grid. Donut chart dirender via canvas JS.
+    Generate HTML dashboard TV dengan time filter (Kemarin s/d 1 Tahun).
+    Load data dari docs/articles.json via JS fetch(). Render dinamis di browser.
     Return string HTML.
     """
-    from collections import Counter
-
-    negatif = sorted([a for a in articles if a.get("sentiment") == "negatif"],
-                     key=lambda x: -x.get("score", 0))
-    positif = sorted([a for a in articles if a.get("sentiment") == "positif"],
-                     key=lambda x: -x.get("score", 0))
-    total   = len(articles)
-    n_neg   = len(negatif)
-    n_pos   = len(positif)
-    pct_pos = round(n_pos / total * 100) if total else 0
-    pct_neg = 100 - pct_pos
-
-    if pct_pos >= 60:
-        sent_color, sent_label = "#4ade80", "POSITIF ✅"
-    elif pct_pos < 40:
-        sent_color, sent_label = "#f87171", "NEGATIF ⚠️"
-    else:
-        sent_color, sent_label = "#fbbf24", "NETRAL ⚡"
+    import json as _json
 
     now_str = datetime.datetime.now().strftime("%d %B %Y, %H:%M WIB")
 
-    # Per tipe media
-    TYPE_COLOR = {
-        "News": "#58A6FF", "Blog": "#4ade80", "Twitter": "#1D9BF0",
-        "Podcast": "#BC8CFF", "Google Alerts": "#F0A500", "E-Commerce": "#f87171",
-    }
-    type_data = {}
-    for a in articles:
-        mt = a.get("media_type", "News")
-        if mt not in type_data:
-            type_data[mt] = {"tot": 0, "neg": 0, "pos": 0}
-        type_data[mt]["tot"] += 1
-        if a.get("sentiment") == "negatif":
-            type_data[mt]["neg"] += 1
-        elif a.get("sentiment") == "positif":
-            type_data[mt]["pos"] += 1
+    try:
+        run_date = datetime.datetime.strptime(date_str, "%d %B %Y").strftime("%Y-%m-%d")
+    except Exception:
+        run_date = datetime.datetime.now().strftime("%Y-%m-%d")
 
-    tipe_rows_html = ""
-    for mt, d in sorted(type_data.items(), key=lambda x: -x[1]["tot"]):
-        tc = TYPE_COLOR.get(mt, "#8B949E")
-        tipe_rows_html += (
-            f'<div class="tipe-row">'
-            f'<span><span class="mdot" style="background:{tc}"></span>'
-            f'<span style="color:{tc}">{mt}</span></span>'
-            f'<span style="text-align:center;color:#e2e8f0">{d["tot"]}</span>'
-            f'<span style="text-align:center;color:#f87171">{d["neg"]}</span>'
-            f'<span style="text-align:center;color:#4ade80">{d["pos"]}</span>'
-            f'</div>'
-        )
+    # Embedded JSON fallback (untuk tampilan pertama sebelum articles.json dimuat)
+    embedded = [
+        {
+            "run_date":   run_date,
+            "title":      a.get("title", ""),
+            "source":     a.get("source", ""),
+            "sentiment":  a.get("sentiment", ""),
+            "score":      a.get("score", 0),
+            "reason":     a.get("reason", ""),
+            "media_type": a.get("media_type", "News"),
+            "link":       a.get("link", ""),
+        }
+        for a in articles
+    ]
+    embedded_json = _json.dumps(embedded, ensure_ascii=False, separators=(",", ":"))
+    nar_safe = (narrative or "").replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${").replace("\n", "<br>")
 
-    # Media per sumber
-    src_tot = Counter()
-    src_neg_c = Counter()
-    src_pos_c = Counter()
-    for a in articles:
-        src = a.get("source", "")
-        if not src:
-            continue
-        src_tot[src] += 1
-        if a.get("sentiment") == "negatif":
-            src_neg_c[src] += 1
-        elif a.get("sentiment") == "positif":
-            src_pos_c[src] += 1
+    # ── CSS ──────────────────────────────────────────────────────────────────
+    css = (
+        "*{margin:0;padding:0;box-sizing:border-box}"
+        "body{background:#080d1a;color:#e2e8f0;font-family:'Segoe UI',Arial,sans-serif;padding:16px 24px}"
+        ".hdr{text-align:center;padding:12px 0 14px;border-bottom:1px solid #1e293b;margin-bottom:11px}"
+        ".hdr h1{font-size:1.65rem;font-weight:800;color:#fff}"
+        ".hdr .sub{color:#64748b;font-size:.78rem;margin-top:4px}"
+        ".hdr .upd{color:#334155;font-size:.68rem;margin-top:3px}"
+        ".filter-bar{display:flex;align-items:center;gap:8px;background:#0f172a;border:1px solid #1e293b;"
+        "border-radius:10px;padding:8px 14px;margin-bottom:11px;flex-wrap:wrap}"
+        ".filter-label{font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;"
+        "letter-spacing:.6px;margin-right:4px;white-space:nowrap}"
+        ".filter-btn{padding:5px 13px;border-radius:20px;font-size:.74rem;font-weight:600;"
+        "border:1px solid #1e293b;background:transparent;color:#94a3b8;cursor:pointer;transition:all .15s;white-space:nowrap}"
+        ".filter-btn:hover{border-color:#3b82f6;color:#93c5fd}"
+        ".filter-btn.active{background:#1d4ed8;border-color:#1d4ed8;color:#fff}"
+        ".filter-divider{width:1px;height:16px;background:#1e293b;margin:0 2px}"
+        ".filter-info{margin-left:auto;font-size:.67rem;color:#475569;white-space:nowrap}"
+        ".stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:11px}"
+        ".stat-card{background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:12px 8px;text-align:center}"
+        ".stat-num{font-size:1.85rem;font-weight:800;line-height:1}"
+        ".stat-lbl{font-size:.6rem;color:#64748b;margin-top:4px;text-transform:uppercase;letter-spacing:.6px}"
+        ".click-legend{display:flex;gap:18px;justify-content:center;align-items:center;background:#0f172a;"
+        "border-radius:7px;padding:5px 14px;margin-bottom:11px;font-size:.72rem;color:#64748b}"
+        ".cl-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}"
+        ".main-grid{display:grid;grid-template-columns:210px 1fr 1fr;gap:11px;align-items:start;margin-bottom:11px}"
+        ".left-panel{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:12px}"
+        ".lsec{font-size:.63rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.7px;text-align:center;margin-bottom:7px}"
+        ".donut-wrap{position:relative;width:120px;height:120px;margin:0 auto 9px}"
+        ".donut-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none}"
+        ".dpct{font-size:1.45rem;font-weight:800;line-height:1}"
+        ".dlbl{font-size:.58rem;font-weight:700;margin-top:2px}"
+        ".leg{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}"
+        ".leg-r{display:flex;align-items:center;gap:6px;font-size:.7rem}"
+        ".ldot{width:8px;height:8px;border-radius:2px;flex-shrink:0}"
+        ".divider{border:none;border-top:1px solid #1e293b;margin:7px 0}"
+        ".tipe-hdr{display:grid;grid-template-columns:1fr 30px 22px 22px;font-size:.57rem;color:#334155;font-weight:700;margin-bottom:2px;padding:0 2px}"
+        ".tipe-row{display:grid;grid-template-columns:1fr 30px 22px 22px;align-items:center;"
+        "padding:3px 2px;border-bottom:1px solid #1e293b18;font-size:.68rem}"
+        ".tipe-row:last-child{border:none}"
+        ".mdot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px}"
+        ".media-sec{font-size:.63rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin:0 0 4px}"
+        ".mhdr,.mrow{display:grid;grid-template-columns:1fr 24px 20px 20px;gap:3px;align-items:center;padding:0 5px}"
+        ".mhdr{font-size:.55rem;color:#334155;font-weight:700;margin-bottom:2px}"
+        ".mhdr span:not(:first-child){text-align:center}"
+        ".mrow{background:#080d1a;border-radius:4px;padding:4px 5px;margin-bottom:2px}"
+        ".msrc{font-size:.6rem;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+        ".mtot{font-size:.65rem;font-weight:700;color:#e2e8f0;text-align:center}"
+        ".mneg{font-size:.6rem;color:#f87171;text-align:center}"
+        ".mpos{font-size:.6rem;color:#4ade80;text-align:center}"
+        ".src-scroll{max-height:320px;overflow-y:auto}"
+        ".art-panel{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:12px}"
+        ".art-hdr{font-size:.83rem;font-weight:700;margin-bottom:9px;padding-bottom:7px;border-bottom:1px solid #1e293b;text-align:center}"
+        ".acard{display:flex;gap:9px;padding:7px 0;border-bottom:1px solid #ffffff06;align-items:flex-start}"
+        ".acard:last-child{border:none}"
+        ".ascore{font-size:1.3rem;font-weight:800;min-width:28px;text-align:center;line-height:1}"
+        ".acontent{flex:1;min-width:0}"
+        ".adate{font-size:.57rem;color:#334155;margin-bottom:2px}"
+        ".atitle-link{display:block;font-size:.77rem;font-weight:600;color:#cbd5e1;text-decoration:none;"
+        "line-height:1.4;margin-bottom:2px;transition:color .15s}"
+        ".atitle-link:hover{color:#93c5fd;text-decoration:underline;text-underline-offset:2px}"
+        ".atitle-link::after{content:'\\2197';font-size:.65em;opacity:0;margin-left:3px;color:#60a5fa;transition:opacity .15s}"
+        ".atitle-link:hover::after{opacity:1}"
+        ".atitle-nolink{display:block;font-size:.77rem;font-weight:600;color:#374151;line-height:1.4;margin-bottom:2px}"
+        ".asrc{font-size:.63rem;color:#475569;margin-bottom:2px}"
+        ".areason{font-size:.6rem;color:#64748b;font-style:italic}"
+        ".abar{background:#1e293b;border-radius:3px;height:3px;overflow:hidden;margin-top:3px}"
+        ".afill{height:100%;border-radius:3px}"
+        ".alink{display:inline-block;margin-top:4px;font-size:.61rem;color:#60a5fa;text-decoration:none;"
+        "padding:2px 7px;border:1px solid #1d4ed8;border-radius:10px}"
+        ".alink:hover{background:#1d4ed822;color:#93c5fd}"
+        ".empty{color:#334155;text-align:center;padding:20px;font-style:italic;font-size:.78rem}"
+        ".narrative-box{background:#0f172a;border:1px solid #1e293b;border-left:4px solid #3b82f6;"
+        "border-radius:12px;padding:14px 18px;margin-bottom:11px}"
+        ".ntitle{font-size:.8rem;font-weight:700;color:#93c5fd;margin-bottom:6px}"
+        ".narrative-text{font-size:.77rem;line-height:1.8;color:#94a3b8}"
+        ".footer{text-align:center;color:#1e293b;font-size:.65rem;padding-top:10px;border-top:1px solid #1e293b}"
+        "@media(min-width:1400px){.main-grid{grid-template-columns:230px 1fr 1fr}}"
+    )
 
-    media_rows_html = ""
-    for src, cnt in src_tot.most_common(20):
-        n = src_neg_c.get(src, 0)
-        p = src_pos_c.get(src, 0)
-        media_rows_html += (
-            f'<div class="mrow">'
-            f'<span class="msrc" title="{src}">{src}</span>'
-            f'<span class="mtot">{cnt}</span>'
-            f'<span class="mneg">{n if n else "·"}</span>'
-            f'<span class="mpos">{p if p else "·"}</span>'
-            f'</div>'
-        )
+    # ── JavaScript Logic (regular string — no f-string escaping needed) ───────
+    js_logic = """
+const TC={"News":"#58A6FF","Blog":"#4ade80","Twitter":"#1D9BF0","Podcast":"#BC8CFF","Google Alerts":"#F0A500","E-Commerce":"#f87171"};
+let ALL=EMBEDDED;
 
-    # Article cards
-    def article_cards(items, color, limit=15):
-        if not items:
-            return '<div class="empty">Tidak ada berita dalam kategori ini ✅</div>'
-        out = ""
-        for a in items[:limit]:
-            bar_w = a.get("score", 0) * 10
-            lnk = a.get("link", "").strip()
-            th = (
-                f'<a class="atitle-link" href="{lnk}" target="_blank" rel="noopener">{a.get("title","")}</a>'
-                if lnk else
-                f'<span class="atitle-nolink">{a.get("title","")}</span>'
-            )
-            lh = (
-                f'<a class="alink" href="{lnk}" target="_blank" rel="noopener">↗ Buka artikel</a>'
-                if lnk else ""
-            )
-            out += (
-                f'<div class="acard">'
-                f'<div class="ascore" style="color:{color}">{a.get("score","")}</div>'
-                f'<div class="acontent">'
-                f'<div class="atitle">{th}</div>'
-                f'<div class="ameta">'
-                f'<span class="abadge" style="background:{color}22;color:{color}">{a.get("media_type","")}</span>'
-                f'<span class="asrc">{a.get("source","")}</span>'
-                f'<span class="areason">{a.get("reason","")}</span>'
-                f'</div>'
-                f'<div class="abar"><div class="afill" style="width:{bar_w}%;background:{color}"></div></div>'
-                f'{lh}'
-                f'</div></div>'
-            )
-        return out
+async function init(){
+  try{const r=await fetch('./articles.json');if(r.ok)ALL=await r.json();}catch(e){}
+  render(1);
+}
 
-    neg_cards = article_cards(negatif, "#f87171")
-    pos_cards = article_cards(positif, "#4ade80")
+function setFilter(btn,days){
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  render(days);
+}
 
-    narasi_block = ""
-    if narrative:
-        narasi_block = (
-            '<section class="narrative-box">'
-            '<div class="ntitle">📋 Ringkasan Naratif Eksekutif</div>'
-            f'<p class="narrative-text">{narrative.replace(chr(10), "<br><br>")}</p>'
-            '</section>'
-        )
+function getCutoff(days){
+  const d=new Date();d.setDate(d.getDate()-days);return d.toISOString().split('T')[0];
+}
 
-    html = f"""<!DOCTYPE html>
-<html lang="id">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="600">
-<title>Media Monitoring BMRI — {date_str}</title>
-<style>
-*{{margin:0;padding:0;box-sizing:border-box}}
-body{{background:#080d1a;color:#e2e8f0;font-family:'Segoe UI',Arial,sans-serif;padding:18px 28px}}
-.hdr{{text-align:center;padding:12px 0 18px;border-bottom:1px solid #1e293b;margin-bottom:12px}}
-.hdr h1{{font-size:1.7rem;font-weight:800;color:#fff}}
-.hdr .sub{{color:#64748b;font-size:.8rem;margin-top:5px}}
-.hdr .upd{{color:#334155;font-size:.7rem;margin-top:3px}}
-/* Click legend */
-.click-legend{{display:flex;gap:20px;justify-content:center;align-items:center;background:#0f172a;border-radius:7px;padding:5px 14px;margin-bottom:12px;font-size:.73rem;color:#64748b}}
-.cl-dot{{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}}
-/* 3-column grid */
-.main-grid{{display:grid;grid-template-columns:220px 1fr 1fr;gap:12px;margin-bottom:12px;align-items:start}}
-/* LEFT PANEL */
-.left-panel{{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:13px}}
-.lsec{{font-size:.65rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.7px;text-align:center;margin-bottom:8px}}
-.donut-wrap{{position:relative;width:120px;height:120px;margin:0 auto 10px}}
-.donut-center{{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none}}
-.dpct{{font-size:1.5rem;font-weight:800;line-height:1;color:{sent_color}}}
-.dlbl{{font-size:.6rem;font-weight:700;color:{sent_color};margin-top:2px}}
-.leg{{display:flex;flex-direction:column;gap:5px;margin-bottom:9px}}
-.leg-r{{display:flex;align-items:center;gap:6px;font-size:.72rem}}
-.ldot{{width:8px;height:8px;border-radius:2px;flex-shrink:0}}
-.divider{{border:none;border-top:1px solid #1e293b;margin:7px 0}}
-.tipe-hdr{{display:grid;grid-template-columns:1fr 30px 22px 22px;font-size:.58rem;color:#334155;font-weight:700;margin-bottom:2px;padding:0 2px}}
-.tipe-row{{display:grid;grid-template-columns:1fr 30px 22px 22px;align-items:center;padding:3px 2px;border-bottom:1px solid #1e293b18;font-size:.7rem}}
-.tipe-row:last-child{{border:none}}
-.mdot{{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px}}
-.media-sec{{font-size:.65rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin:0 0 4px}}
-.mhdr,.mrow{{display:grid;grid-template-columns:1fr 24px 20px 20px;gap:3px;align-items:center;padding:0 5px}}
-.mhdr{{font-size:.56rem;color:#334155;font-weight:700;margin-bottom:2px}}
-.mhdr span:not(:first-child){{text-align:center}}
-.mrow{{background:#080d1a;border-radius:4px;padding:4px 5px;margin-bottom:2px}}
-.msrc{{font-size:.62rem;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
-.mtot{{font-size:.68rem;font-weight:700;color:#e2e8f0;text-align:center}}
-.mneg{{font-size:.62rem;color:#f87171;text-align:center}}
-.mpos{{font-size:.62rem;color:#4ade80;text-align:center}}
-.src-scroll{{max-height:340px;overflow-y:auto}}
-/* ARTICLE PANELS */
-.art-panel{{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:13px}}
-.art-hdr{{font-size:.85rem;font-weight:700;margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid #1e293b;text-align:center}}
-.acard{{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #ffffff07;align-items:flex-start}}
-.acard:last-child{{border:none}}
-.ascore{{font-size:1.4rem;font-weight:800;min-width:30px;text-align:center;line-height:1}}
-.acontent{{flex:1}}
-.atitle{{font-size:.8rem;font-weight:600;line-height:1.4;margin-bottom:3px}}
-.atitle-link{{color:#cbd5e1;text-decoration:none;transition:color .15s}}
-.atitle-link:hover{{color:#93c5fd;text-decoration:underline;text-underline-offset:2px}}
-.atitle-link::after{{content:'↗';font-size:.65em;opacity:0;margin-left:3px;color:#60a5fa;transition:opacity .15s}}
-.atitle-link:hover::after{{opacity:1}}
-.atitle-nolink{{color:#374151}}
-.ameta{{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-bottom:3px}}
-.abadge{{font-size:.58rem;padding:2px 6px;border-radius:20px;font-weight:600}}
-.asrc{{font-size:.65rem;color:#475569}}
-.areason{{font-size:.65rem;color:#64748b;font-style:italic}}
-.abar{{background:#1e293b;border-radius:3px;height:3px;overflow:hidden;margin-top:2px}}
-.afill{{height:100%;border-radius:3px}}
-.alink{{display:inline-block;margin-top:4px;font-size:.62rem;color:#60a5fa;text-decoration:none;padding:2px 7px;border:1px solid #1d4ed8;border-radius:10px}}
-.alink:hover{{background:#1d4ed833;color:#93c5fd}}
-.empty{{color:#334155;text-align:center;padding:20px;font-style:italic;font-size:.78rem}}
-/* NARRATIVE - bawah grid */
-.narrative-box{{background:#0f172a;border:1px solid #1e293b;border-left:4px solid #3b82f6;border-radius:12px;padding:16px 20px;margin-bottom:12px}}
-.ntitle{{font-size:.85rem;font-weight:700;margin-bottom:8px;color:#93c5fd}}
-.narrative-text{{font-size:.82rem;line-height:1.8;color:#94a3b8}}
-.footer{{text-align:center;color:#1e293b;font-size:.68rem;padding-top:12px;border-top:1px solid #1e293b}}
-@media(min-width:1400px){{
-  .main-grid{{grid-template-columns:240px 1fr 1fr}}
-  .atitle{{font-size:.85rem}}
-  .ascore{{font-size:1.6rem}}
-}}
-</style>
-</head>
-<body>
+function render(days){
+  const arts=ALL.filter(a=>a.run_date>=getCutoff(days));
+  const neg=arts.filter(a=>a.sentiment==='negatif').sort((a,b)=>b.score-a.score);
+  const pos=arts.filter(a=>a.sentiment==='positif').sort((a,b)=>b.score-a.score);
+  const tot=arts.length,nN=neg.length,nP=pos.length;
+  const pP=tot?Math.round(nP/tot*100):0,pN=100-pP;
+  const sentColor=pP>=60?'#4ade80':(pP<40?'#f87171':'#fbbf24');
+  const sentLabel=pP>=60?'POSITIF ✅':(pP<40?'NEGATIF ⚠️':'NETRAL ⚡');
 
-<header class="hdr">
-  <h1>📊 Media Monitoring Bank Mandiri (BMRI) — {date_str}</h1>
-  <div class="sub">Total {total} artikel &nbsp;·&nbsp; Sumber: Talkwalker · Google Alerts · Podcast</div>
-  <div class="upd">Auto-refresh setiap 10 menit &nbsp;·&nbsp; Terakhir diperbarui: {now_str}</div>
-</header>
+  // filter info
+  const dates=[...new Set(arts.map(a=>a.run_date))].sort();
+  const lbls={1:'Kemarin',7:'7 hari',30:'30 hari',90:'3 bulan',180:'6 bulan',365:'1 tahun'};
+  const info=days===1?(dates.length?'Data: '+fd(dates[dates.length-1]):'Tidak ada data')
+    :(lbls[days]||days+' hari')+' terakhir · '+dates.length+' hari data';
+  gi('filter-info').textContent=info;
 
-<div class="click-legend">
-  <span><span class="cl-dot" style="background:#cbd5e1"></span>Judul terang + garis bawah saat hover = ada link, bisa diklik</span>
-  <span><span class="cl-dot" style="background:#374151"></span>Judul abu-abu = tidak ada link</span>
-</div>
+  // stats cards
+  const srcSet=new Set(arts.map(a=>a.source).filter(Boolean));
+  gi('s-total').textContent=tot.toLocaleString('id');
+  gi('s-neg').textContent=nN.toLocaleString('id');
+  gi('s-pos').textContent=nP.toLocaleString('id');
+  gi('s-pct').textContent=pP+'%';gi('s-pct').style.color=sentColor;
+  gi('s-sources').textContent=srcSet.size.toLocaleString('id');
 
-<div class="main-grid">
+  // donut & legend
+  gi('dpct').textContent=pP+'%';gi('dpct').style.color=sentColor;
+  gi('dlbl').textContent=sentLabel;gi('dlbl').style.color=sentColor;
+  gi('leg-neg').textContent='Negatif '+nN+' ('+pN+'%)';
+  gi('leg-pos').textContent='Positif '+nP+' ('+pP+'%)';
+  drawDonut(pP);
 
-  <!-- KIRI: Sentimen + Tipe + Media -->
-  <div class="left-panel">
-    <div class="lsec">Sentimen Keseluruhan</div>
-    <div class="donut-wrap">
-      <canvas id="donutCanvas" width="120" height="120"></canvas>
-      <div class="donut-center">
-        <div class="dpct">{pct_pos}%</div>
-        <div class="dlbl">{sent_label}</div>
-      </div>
-    </div>
-    <div class="leg">
-      <div class="leg-r"><div class="ldot" style="background:#f87171"></div><span style="color:#f87171">Negatif {n_neg} ({pct_neg}%)</span></div>
-      <div class="leg-r"><div class="ldot" style="background:#4ade80"></div><span style="color:#4ade80">Positif {n_pos} ({pct_pos}%)</span></div>
-    </div>
-    <hr class="divider">
-    <div class="tipe-hdr"><span>Tipe</span><span style="text-align:center">Ttl</span><span style="color:#f87171;text-align:center">N</span><span style="color:#4ade80;text-align:center">P</span></div>
-    {tipe_rows_html}
-    <hr class="divider">
-    <div class="media-sec">Media Terpantau</div>
-    <div class="mhdr"><span>Sumber</span><span style="text-align:center">Ttl</span><span style="color:#f87171;text-align:center">N</span><span style="color:#4ade80;text-align:center">P</span></div>
-    <div class="src-scroll">{media_rows_html}</div>
-  </div>
+  // per tipe media
+  const td={};
+  arts.forEach(a=>{const m=a.media_type||'News';if(!td[m])td[m]={t:0,n:0,p:0};td[m].t++;
+    if(a.sentiment==='negatif')td[m].n++;if(a.sentiment==='positif')td[m].p++;});
+  gi('tipe-rows').innerHTML=Object.entries(td).sort((a,b)=>b[1].t-a[1].t).map(([m,d])=>{
+    const c=TC[m]||'#8B949E';
+    return `<div class="tipe-row"><span><span class="mdot" style="background:${c}"></span>`
+      +`<span style="color:${c}">${esc(m)}</span></span>`
+      +`<span style="text-align:center;color:#e2e8f0">${d.t}</span>`
+      +`<span style="text-align:center;color:#f87171">${d.n||'·'}</span>`
+      +`<span style="text-align:center;color:#4ade80">${d.p||'·'}</span></div>`;
+  }).join('');
 
-  <!-- TENGAH: Negatif -->
-  <div class="art-panel">
-    <div class="art-hdr" style="color:#f87171">▼ NEGATIF &nbsp;({n_neg} artikel)</div>
-    {neg_cards}
-  </div>
+  // media sources
+  const sc={},sn={},sp={};
+  arts.forEach(a=>{const s=a.source;if(!s)return;sc[s]=(sc[s]||0)+1;
+    if(a.sentiment==='negatif')sn[s]=(sn[s]||0)+1;
+    if(a.sentiment==='positif')sp[s]=(sp[s]||0)+1;});
+  gi('src-scroll').innerHTML=Object.entries(sc).sort((a,b)=>b[1]-a[1]).slice(0,20).map(([s,c])=>
+    `<div class="mrow"><span class="msrc" title="${esc(s)}">${esc(s)}</span>`
+    +`<span class="mtot">${c}</span><span class="mneg">${sn[s]||'·'}</span>`
+    +`<span class="mpos">${sp[s]||'·'}</span></div>`
+  ).join('');
 
-  <!-- KANAN: Positif -->
-  <div class="art-panel">
-    <div class="art-hdr" style="color:#4ade80">▲ POSITIF &nbsp;({n_pos} artikel)</div>
-    {pos_cards}
-  </div>
+  // articles
+  renderArts(neg.slice(0,10),'neg-list','neg-count','#f87171');
+  renderArts(pos.slice(0,10),'pos-list','pos-count','#4ade80');
 
-</div>
+  // narrative
+  if(NAR){
+    gi('nar-day').textContent=days===1?'':`(Narasi: hari terakhir — ${fd(RUN_DATE)})`;
+    gi('nar-text').innerHTML=NAR;
+  }
+}
 
-{narasi_block}
+function renderArts(items,listId,countId,color){
+  gi(countId).textContent='('+items.length+' artikel)';
+  if(!items.length){gi(listId).innerHTML='<div class="empty">Tidak ada berita dalam kategori ini</div>';return;}
+  gi(listId).innerHTML=items.map(a=>{
+    const w=(a.score/10*100).toFixed(0);
+    const d=a.run_date?fd(a.run_date):'';
+    const th=a.link?`<a class="atitle-link" href="${esc(a.link)}" target="_blank" rel="noopener">${esc(a.title)}</a>`
+      :`<span class="atitle-nolink">${esc(a.title)}</span>`;
+    const lh=a.link?`<a class="alink" href="${esc(a.link)}" target="_blank" rel="noopener">↗ Buka artikel</a>`:'';
+    return `<div class="acard"><div class="ascore" style="color:${color}">${a.score}</div>`
+      +`<div class="acontent"><div class="adate">${d}</div>${th}`
+      +`<div class="asrc">${esc(a.source||'')} <span class="areason">${esc(a.reason||'')}</span></div>`
+      +`<div class="abar"><div class="afill" style="width:${w}%;background:${color}"></div></div>${lh}</div></div>`;
+  }).join('');
+}
 
-<footer class="footer">
-  Powered by Claude AI (Anthropic) &nbsp;·&nbsp; Talkwalker Alerts &nbsp;·&nbsp; Google Alerts &nbsp;·&nbsp; ListenNotes
-  &nbsp;&nbsp;|&nbsp;&nbsp; Update otomatis setiap hari pukul 07.00 WIB via GitHub Actions
-</footer>
+function drawDonut(pctPos){
+  const cv=document.getElementById('donutCanvas');if(!cv)return;
+  const ctx=cv.getContext('2d');
+  const cx=60,cy=60,r=54,ir=34,gap=0.05,s0=-Math.PI/2;
+  const pn=(100-pctPos)/100,pp=pctPos/100;
+  function arc(s,en,col){ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,s,en);
+    ctx.arc(cx,cy,ir,en,s,true);ctx.closePath();ctx.fillStyle=col;ctx.fill();}
+  ctx.fillStyle='#0f172a';ctx.fillRect(0,0,120,120);
+  if(pn>0.01)arc(s0,s0+Math.PI*2*pn-gap,'#f87171');
+  if(pp>0.01)arc(s0+Math.PI*2*pn+gap,s0+Math.PI*2-gap,'#4ade80');
+}
 
-<script>
-(function() {{
-  var canvas = document.getElementById('donutCanvas');
-  if (!canvas) return;
-  var ctx = canvas.getContext('2d');
-  var cx = 60, cy = 60, r = 54, ir = 34;
-  var pctNeg = {pct_neg} / 100;
-  var pctPos = {pct_pos} / 100;
-  var gap = 0.05;
-  var s0 = -Math.PI / 2;
-  function arc(start, end, color) {{
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, r, start, end);
-    ctx.arc(cx, cy, ir, end, start, true);
-    ctx.closePath();
-    ctx.fillStyle = color;
-    ctx.fill();
-  }}
-  ctx.fillStyle = '#0f172a';
-  ctx.fillRect(0, 0, 120, 120);
-  if (pctNeg > 0.01) arc(s0, s0 + Math.PI * 2 * pctNeg - gap, '#f87171');
-  if (pctPos > 0.01) arc(s0 + Math.PI * 2 * pctNeg + gap, s0 + Math.PI * 2 - gap, '#4ade80');
-}})();
-</script>
-</body>
-</html>"""
+function gi(id){return document.getElementById(id);}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function fd(iso){if(!iso)return'';const[y,m,d]=iso.split('-');
+  const mn=['','Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  return parseInt(d)+' '+(mn[parseInt(m)]||m)+' '+y;}
+
+init();
+"""
+
+    # ── Build HTML via string concatenation (avoids f-string brace conflicts) ─
+    html = (
+        '<!DOCTYPE html>\n<html lang="id">\n<head>\n'
+        '<meta charset="UTF-8">\n'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">\n'
+        '<meta http-equiv="refresh" content="600">\n'
+        + f'<title>Media Monitoring BMRI — {date_str}</title>\n'
+        + '<style>\n' + css + '\n</style>\n</head>\n<body>\n\n'
+        + '<header class="hdr">\n'
+        '  <h1>\U0001f4ca Media Monitoring Bank Mandiri (BMRI)</h1>\n'
+        + f'  <div class="sub">Sumber: Talkwalker \xb7 Google Alerts \xb7 Podcast'
+          f' &nbsp;\xb7&nbsp; Auto-refresh setiap 10 menit</div>\n'
+        + f'  <div class="upd">Terakhir diperbarui: {now_str}</div>\n'
+        + '</header>\n\n'
+        '<div class="click-legend">\n'
+        '  <span><span class="cl-dot" style="background:#cbd5e1"></span>'
+        'Judul terang = ada link, bisa diklik</span>\n'
+        '  <span><span class="cl-dot" style="background:#374151"></span>'
+        'Judul abu-abu = tidak ada link</span>\n'
+        '</div>\n\n'
+        '<div class="filter-bar">\n'
+        '  <span class="filter-label">⏱ Periode:</span>\n'
+        '  <button class="filter-btn active" onclick="setFilter(this,1)">Kemarin</button>\n'
+        '  <button class="filter-btn" onclick="setFilter(this,7)">7 Hari</button>\n'
+        '  <button class="filter-btn" onclick="setFilter(this,30)">30 Hari</button>\n'
+        '  <button class="filter-btn" onclick="setFilter(this,90)">3 Bulan</button>\n'
+        '  <button class="filter-btn" onclick="setFilter(this,180)">6 Bulan</button>\n'
+        '  <button class="filter-btn" onclick="setFilter(this,365)">1 Tahun</button>\n'
+        '  <div class="filter-divider"></div>\n'
+        '  <span class="filter-info" id="filter-info">Memuat data...</span>\n'
+        '</div>\n\n'
+        '<div class="stats-row">\n'
+        '  <div class="stat-card"><div class="stat-num" style="color:#94a3b8" id="s-total">—</div>'
+        '<div class="stat-lbl">Total Artikel</div></div>\n'
+        '  <div class="stat-card"><div class="stat-num" style="color:#f87171" id="s-neg">—</div>'
+        '<div class="stat-lbl">Negatif</div></div>\n'
+        '  <div class="stat-card"><div class="stat-num" style="color:#4ade80" id="s-pos">—</div>'
+        '<div class="stat-lbl">Positif</div></div>\n'
+        '  <div class="stat-card"><div class="stat-num" id="s-pct">—</div>'
+        '<div class="stat-lbl">Sentimen Positif</div></div>\n'
+        '  <div class="stat-card"><div class="stat-num" style="color:#60a5fa" id="s-sources">—</div>'
+        '<div class="stat-lbl">Media Sumber</div></div>\n'
+        '</div>\n\n'
+        '<div class="main-grid">\n\n'
+        '  <div class="left-panel">\n'
+        '    <div class="lsec">Sentimen Keseluruhan</div>\n'
+        '    <div class="donut-wrap">\n'
+        '      <canvas id="donutCanvas" width="120" height="120"></canvas>\n'
+        '      <div class="donut-center">'
+        '<div class="dpct" id="dpct">—</div>'
+        '<div class="dlbl" id="dlbl">Memuat...</div></div>\n'
+        '    </div>\n'
+        '    <div class="leg">\n'
+        '      <div class="leg-r"><div class="ldot" style="background:#f87171"></div>'
+        '<span style="color:#f87171" id="leg-neg">Negatif —</span></div>\n'
+        '      <div class="leg-r"><div class="ldot" style="background:#4ade80"></div>'
+        '<span style="color:#4ade80" id="leg-pos">Positif —</span></div>\n'
+        '    </div>\n'
+        '    <hr class="divider">\n'
+        '    <div class="tipe-hdr"><span>Tipe</span>'
+        '<span style="text-align:center">Ttl</span>'
+        '<span style="color:#f87171;text-align:center">N</span>'
+        '<span style="color:#4ade80;text-align:center">P</span></div>\n'
+        '    <div id="tipe-rows"></div>\n'
+        '    <hr class="divider">\n'
+        '    <div class="media-sec">Media Terpantau</div>\n'
+        '    <div class="mhdr"><span>Sumber</span>'
+        '<span style="text-align:center">Ttl</span>'
+        '<span style="color:#f87171;text-align:center">N</span>'
+        '<span style="color:#4ade80;text-align:center">P</span></div>\n'
+        '    <div class="src-scroll" id="src-scroll"></div>\n'
+        '  </div>\n\n'
+        '  <div class="art-panel">\n'
+        '    <div class="art-hdr" style="color:#f87171">▼ NEGATIF'
+        ' &nbsp;<span id="neg-count"></span></div>\n'
+        '    <div id="neg-list"></div>\n'
+        '  </div>\n\n'
+        '  <div class="art-panel">\n'
+        '    <div class="art-hdr" style="color:#4ade80">▲ POSITIF'
+        ' &nbsp;<span id="pos-count"></span></div>\n'
+        '    <div id="pos-list"></div>\n'
+        '  </div>\n\n'
+        '</div>\n\n'
+        '<div class="narrative-box">\n'
+        '  <div class="ntitle">\U0001f4cb Ringkasan Naratif Eksekutif'
+        ' &nbsp;<small id="nar-day" style="font-weight:400;color:#64748b;font-size:.68rem"></small></div>\n'
+        '  <div class="narrative-text" id="nar-text"></div>\n'
+        '</div>\n\n'
+        '<footer class="footer">\n'
+        '  Powered by Claude AI (Anthropic) &nbsp;\xb7&nbsp;'
+        ' Talkwalker \xb7 Google Alerts \xb7 ListenNotes\n'
+        '  &nbsp;\xb7&nbsp; Data historis tersimpan hingga 1 tahun'
+        ' &nbsp;\xb7&nbsp; Update otomatis pukul 07.00 WIB\n'
+        '</footer>\n\n'
+        '<script>\n'
+        + f'const EMBEDDED={embedded_json};\n'
+        + f'const NAR=`{nar_safe}`;\n'
+        + f"const RUN_DATE='{run_date}';\n"
+        + js_logic
+        + '</script>\n</body>\n</html>'
+    )
     return html
 
 
@@ -1802,20 +1903,17 @@ def send_email(articles, date_str, chart_path, narrative=None):
     positif = len([a for a in articles if a.get("sentiment") == "positif"])
     negatif = len([a for a in articles if a.get("sentiment") == "negatif"])
 
-    # Root message: mixed (untuk lampiran + related)
     msg = MIMEMultipart("mixed")
     msg["Subject"] = f"📊 Media Monitoring BMRI — {date_str} | {positif} Positif / {negatif} Negatif"
     msg["From"]    = EMAIL_SENDER
     msg["To"]      = EMAIL_RECIPIENT
 
-    # Bagian HTML (alternative + related untuk inline image)
     related = MIMEMultipart("related")
     alternative = MIMEMultipart("alternative")
     html_body = build_html_email(articles, date_str, chart_path, narrative=narrative)
     alternative.attach(MIMEText(html_body, "html", "utf-8"))
     related.attach(alternative)
 
-    # Embed grafik sebagai inline image
     with open(chart_path, "rb") as f:
         img = MIMEImage(f.read(), _subtype="png")
     img.add_header("Content-ID", "<sentiment_chart>")
@@ -1823,7 +1921,6 @@ def send_email(articles, date_str, chart_path, narrative=None):
     related.attach(img)
     msg.attach(related)
 
-    # Lampiran Excel
     excel_path = None
     try:
         excel_path = generate_excel_report(articles, date_str)
@@ -1865,17 +1962,15 @@ def main():
     print(f"  BANK MANDIRI MEDIA MONITORING — {date_str}")
     print(f"{'='*55}\n")
 
-    # 1. Ambil semua sumber
     print("[1/7] Mengambil email dari Gmail...")
     service   = get_gmail_service()
     tw_bodies = fetch_talkwalker_emails(service)
     ga_bodies = fetch_google_alerts_emails(service)
 
-    # 2. Fetch podcast
     print("[2/7] Mencari sebutan di Podcast...")
     articles_pod = fetch_podcast_mentions()
 
-    if not tw_bodies and not ga_bodiodies and not articles_pod:
+    if not tw_bodies and not ga_bodies and not articles_pod:
         print("  ⚠ Tidak ada data dari semua sumber.")
         send_telegram_text(
             f"ℹ️ *Media Monitoring Bank Mandiri — {date_str}*\n\n"
@@ -1883,12 +1978,10 @@ def main():
         )
         return
 
-    # 3. Parse artikel
     print("[3/7] Mem-parsing artikel...")
     articles_tw = parse_articles(tw_bodies) if tw_bodies else []
     articles_ga = parse_google_alerts(ga_bodies) if ga_bodies else []
 
-    # Gabungkan semua, deduplikasi berdasarkan judul
     all_raw     = articles_tw + articles_ga + articles_pod
     seen_titles = set()
     articles    = []
@@ -1906,40 +1999,37 @@ def main():
         print("  ⚠ Tidak ada artikel relevan ditemukan.")
         return
 
-    # 4. Analisis sentimen
     print("[4/7] Menganalisis sentimen dengan Claude AI...")
     articles = analyze_sentiment(articles)
 
-    # 5. Narasi eksekutif
     print("[5/7] Membuat narasi eksekutif...")
     narrative = generate_narrative_summary(articles, date_str)
 
-    # 6. Buat grafik sentimen
     print("[6/7] Membuat grafik sentimen...")
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         chart_path = tmp.name
     generate_chart(articles, chart_path)
 
-    # 7. Kirim ke Telegram + Deploy Dashboard + Kirim Email
     print("[7/7] Mengirim ke Telegram + Email + Dashboard...")
     send_telegram_text(format_telegram_negative(articles, date_str))
     send_telegram_text(format_telegram_positive(articles, date_str))
     send_telegram_photo(
         chart_path,
         caption=(
-            f"📊 *Grafik Sentimen Bank Mandiri — {date_str}*\n"
+            f"\U0001f4ca *Grafik Sentimen Bank Mandiri — {date_str}*\n"
             f"_{len(articles)} berita dianalisis_"
         )
     )
     send_telegram_text(format_summary(articles, date_str))
 
-    # Deploy TV Dashboard ke GitHub Pages (docs/index.html)
+    # Deploy TV Dashboard ke GitHub Pages (docs/index.html + docs/articles.json)
     try:
+        docs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs")
+        os.makedirs(docs_dir, exist_ok=True)
+        save_articles_history(articles, date_str, narrative, docs_dir)
         dashboard_html = generate_tv_dashboard(
             articles, date_str, chart_path, narrative=narrative
         )
-        docs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs")
-        os.makedirs(docs_dir, exist_ok=True)
         dashboard_path = os.path.join(docs_dir, "index.html")
         with open(dashboard_path, "w", encoding="utf-8") as f:
             f.write(dashboard_html)
@@ -1947,13 +2037,11 @@ def main():
     except Exception as e:
         print(f"  ⚠ Dashboard error: {e}")
 
-    # Kirim email
     try:
         send_email(articles, date_str, chart_path, narrative=narrative)
     except Exception as e:
         print(f"  ⚠ Email error: {e}")
 
-    # Cleanup chart temp file
     try:
         os.unlink(chart_path)
     except Exception:
