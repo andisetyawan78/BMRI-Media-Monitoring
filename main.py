@@ -215,6 +215,9 @@ def html_to_text(html):
 def extract_talkwalker_links(html):
     """
     Ekstrak semua link artikel dari HTML Talkwalker email.
+    Talkwalker membungkus link artikel dalam redirect URL mereka sendiri
+    (https://click.talkwalker.com/...&url=https%3A%2F%2Faktual.id%2F...),
+    jadi kita ekstrak URL asli dari parameter redirect.
     Return dict: {anchor_text_normalized -> url}
     """
     from urllib.parse import unquote
@@ -223,12 +226,12 @@ def extract_talkwalker_links(html):
         r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
         re.DOTALL | re.IGNORECASE,
     )
-    # Domain/pola yang harus dilewati (internal/tracking Talkwalker)
-    SKIP = {
-        "talkwalker.com", "google.com/", "twitter.com", "facebook.com",
-        "linkedin.com", "unsubscribe", "campaign", "/track", "click.",
-        "mailto:", "javascript:", "#",
-    }
+    # Pola internal Talkwalker yang harus dilewati sepenuhnya
+    SKIP_INTERNAL = [
+        "unsubscribe", "mailto:", "javascript:", "tell-a-friend",
+        "manage-alert", "/account", "delete-alert",
+        "facebook.com", "twitter.com", "linkedin.com",
+    ]
     link_map = {}
     for m in link_re.finditer(html):
         url    = m.group(1).strip()
@@ -236,9 +239,29 @@ def extract_talkwalker_links(html):
         anchor = re.sub(r"\s+", " ", anchor)
         if not url.startswith("http") or not anchor or len(anchor) < 8:
             continue
-        if any(s in url.lower() for s in SKIP):
+        if any(s in url.lower() for s in SKIP_INTERNAL):
             continue
-        # Normalize untuk matching
+
+        # Talkwalker redirect → ekstrak URL artikel asli dari parameter
+        if "talkwalker.com" in url.lower():
+            redirect_m = re.search(
+                r"[?&](?:url|link|href|target|dest)=([^&\s\"']+)",
+                url, re.IGNORECASE
+            )
+            if redirect_m:
+                url = unquote(redirect_m.group(1))
+                if not url.startswith("http"):
+                    continue
+            else:
+                # Coba format Talkwalker yang encode seluruh URL di akhir
+                # Contoh: ...talkwalker.com/trk/...?https://katadata.co.id/...
+                direct_m = re.search(r"https?://(?!(?:www\.)?talkwalker\.com)[^\s\"']+", url)
+                if direct_m:
+                    url = direct_m.group(0)
+                else:
+                    continue  # Tidak bisa ekstrak, lewati
+
+        # Normalize anchor untuk matching dengan judul artikel
         key = re.sub(r"[^\w\s]", "", anchor.lower()).strip()[:100]
         if key:
             link_map[key] = url
@@ -718,17 +741,19 @@ Maksimal 200 kata total. Langsung ke inti, tanpa pembuka seperti "Berikut ringka
 # ─────────────────────────────────────────────
 def generate_chart(articles, output_path):
     """
-    Buat grafik 2-panel sentimen:
-      Kiri : Donut chart ringkasan + stats per tipe media
-      Kanan: Diverging horizontal bar chart top artikel (negatif kiri, positif kanan)
+    Grafik 2-baris dark-theme:
+      Baris 1 (kiri): Donut sentimen keseluruhan
+      Baris 1 (kanan): Tabel distribusi per tipe media
+      Baris 2 (penuh): Diverging bar chart — label artikel di DALAM bar
+                       (bukan y-axis label, sehingga tidak overflow ke panel lain)
     """
-    BG        = "#0D1117"
-    CARD_BG   = "#161B22"
-    NEG_C     = "#F85149"
-    POS_C     = "#3FB950"
-    TEXT_C    = "#E6EDF3"
-    MUTED_C   = "#8B949E"
-    GRID_C    = "#21262D"
+    BG      = "#0D1117"
+    CARD_BG = "#161B22"
+    NEG_C   = "#F85149"
+    POS_C   = "#3FB950"
+    TEXT_C  = "#E6EDF3"
+    MUTED_C = "#8B949E"
+    GRID_C  = "#21262D"
 
     negatif_all = sorted(
         [a for a in articles if a.get("sentiment") == "negatif"],
@@ -738,85 +763,72 @@ def generate_chart(articles, output_path):
         [a for a in articles if a.get("sentiment") == "positif"],
         key=lambda x: x.get("score", 0), reverse=True,
     )
-    total    = len(articles)
-    n_neg    = len(negatif_all)
-    n_pos    = len(positif_all)
-    pct_pos  = round(n_pos / total * 100) if total else 0
-    pct_neg  = 100 - pct_pos
+    total   = len(articles)
+    n_neg   = len(negatif_all)
+    n_pos   = len(positif_all)
+    pct_pos = round(n_pos / total * 100) if total else 0
+    pct_neg = 100 - pct_pos
 
-    # Top 12 per sisi untuk bar chart
-    negatif = negatif_all[:12]
-    positif = positif_all[:12]
-
+    negatif  = negatif_all[:12]
+    positif  = positif_all[:12]
     yesterday = (datetime.date.today() - datetime.timedelta(days=1)).strftime("%d %B %Y")
 
-    # ── Layout ──────────────────────────────────────────
-    bar_rows = max(len(negatif), len(positif), 6)
-    fig_h    = max(10, bar_rows * 0.55 + 5)
-    fig      = plt.figure(figsize=(20, fig_h), facecolor=BG)
+    n_bars = max(len(negatif), len(positif), 6)
+    fig_h  = max(13, n_bars * 0.65 + 7)
 
-    # GridSpec: kiri 28%, kanan 72%
+    fig = plt.figure(figsize=(22, fig_h), facecolor=BG)
+
+    # 2-baris: baris 0 = donut+tabel (30% tinggi), baris 1 = bar chart (70%)
     gs = GridSpec(
-        3, 2,
+        2, 2,
         figure=fig,
-        width_ratios=[1, 2.6],
-        height_ratios=[0.08, 1, 0.55],
-        hspace=0.05,
-        wspace=0.08,
-        left=0.02, right=0.98,
+        width_ratios=[1, 1.5],
+        height_ratios=[2.2, 5],
+        hspace=0.35,
+        wspace=0.28,
+        left=0.03, right=0.97,
         top=0.93, bottom=0.06,
     )
 
-    # ── JUDUL UTAMA ──────────────────────────────────────
-    fig.text(
-        0.5, 0.965,
-        f"📊  Media Monitoring Bank Mandiri (BMRI)  —  {yesterday}",
-        ha="center", va="center",
-        fontsize=15, fontweight="bold", color=TEXT_C,
-    )
-    fig.text(
-        0.5, 0.945,
-        f"Total {total} artikel dianalisis oleh Claude AI",
-        ha="center", va="center",
-        fontsize=9, color=MUTED_C,
-    )
+    # ── Judul ────────────────────────────────────────────
+    fig.text(0.5, 0.97,
+             f"Media Monitoring Bank Mandiri (BMRI)  —  {yesterday}",
+             ha="center", fontsize=15, fontweight="bold", color=TEXT_C)
+    fig.text(0.5, 0.955,
+             f"Total {total} artikel dianalisis oleh Claude AI",
+             ha="center", fontsize=9, color=MUTED_C)
 
-    # ═══════════════════════════════════════════════════
-    # PANEL KIRI — Donut + Stats per media
-    # ═══════════════════════════════════════════════════
-    ax_donut = fig.add_subplot(gs[1, 0], facecolor=CARD_BG)
-
-    # Donut
-    wedge_sizes   = [n_neg, n_pos] if total else [1, 1]
-    wedge_colors  = [NEG_C, POS_C]
-    wedge_labels  = ["", ""]
-    wedges, _     = ax_donut.pie(
-        wedge_sizes, colors=wedge_colors, labels=wedge_labels,
-        startangle=90, counterclock=False,
-        wedgeprops=dict(width=0.42, edgecolor=CARD_BG, linewidth=3),
-    )
-    # Teks tengah donut
+    # ════════════════════════════════════════════════════
+    # DONUT — baris 0, kolom 0
+    # ════════════════════════════════════════════════════
+    ax_donut = fig.add_subplot(gs[0, 0], facecolor=CARD_BG)
     overall_label = "POSITIF ✓" if pct_pos >= 60 else ("NEGATIF !" if pct_neg > 60 else "NETRAL ~")
     overall_color = POS_C if pct_pos >= 60 else (NEG_C if pct_neg > 60 else "#F0A500")
-    ax_donut.text(0, 0.12, f"{pct_pos}%", ha="center", va="center",
-                  fontsize=22, fontweight="bold", color=overall_color)
-    ax_donut.text(0, -0.18, overall_label, ha="center", va="center",
-                  fontsize=8, fontweight="bold", color=overall_color)
-
-    ax_donut.set_title("Sentimen Keseluruhan", fontsize=9.5, color=TEXT_C,
-                       fontweight="bold", pad=8)
-    # Legenda donut
+    ax_donut.pie(
+        [n_neg, n_pos] if total else [1, 1],
+        colors=[NEG_C, POS_C],
+        startangle=90, counterclock=False,
+        wedgeprops=dict(width=0.40, edgecolor=CARD_BG, linewidth=3),
+    )
+    ax_donut.text(0,  0.12, f"{pct_pos}%", ha="center", va="center",
+                  fontsize=26, fontweight="bold", color=overall_color)
+    ax_donut.text(0, -0.20, overall_label, ha="center", va="center",
+                  fontsize=9, fontweight="bold", color=overall_color)
+    ax_donut.set_title("Sentimen Keseluruhan", fontsize=10, color=TEXT_C,
+                       fontweight="bold", pad=10)
     ax_donut.legend(
-        [f"Negatif  {n_neg} artikel ({pct_neg}%)",
-         f"Positif   {n_pos} artikel ({pct_pos}%)"],
-        loc="lower center", bbox_to_anchor=(0.5, -0.12),
-        fontsize=8, framealpha=0, labelcolor=[NEG_C, POS_C],
-        handlelength=1.2, handleheight=1,
+        [f"Negatif  {n_neg} ({pct_neg}%)", f"Positif  {n_pos} ({pct_pos}%)"],
+        loc="lower center", bbox_to_anchor=(0.5, -0.06),
+        fontsize=9, framealpha=0, labelcolor=[NEG_C, POS_C],
     )
 
-    # ── Stats per media type ─────────────────────────
-    ax_media = fig.add_subplot(gs[2, 0], facecolor=CARD_BG)
-    ax_media.axis("off")
+    # ════════════════════════════════════════════════════
+    # TABEL MEDIA — baris 0, kolom 1
+    # ════════════════════════════════════════════════════
+    ax_tbl = fig.add_subplot(gs[0, 1], facecolor=CARD_BG)
+    ax_tbl.axis("off")
+    ax_tbl.set_title("Distribusi per Tipe Media", fontsize=10, color=TEXT_C,
+                     fontweight="bold", pad=10)
 
     media_types = ["News", "Blog", "Twitter", "Google Alerts", "Podcast", "E-Commerce"]
     MTYPE_COLOR = {
@@ -825,124 +837,118 @@ def generate_chart(articles, output_path):
     }
     rows_data = []
     for mt in media_types:
-        sub  = [a for a in articles if a.get("media_type") == mt]
+        sub = [a for a in articles if a.get("media_type") == mt]
         if not sub:
             continue
         neg_c = sum(1 for a in sub if a.get("sentiment") == "negatif")
-        pos_c = len(sub) - neg_c
-        rows_data.append((mt, len(sub), neg_c, pos_c))
+        rows_data.append((mt, len(sub), neg_c, len(sub) - neg_c))
 
-    if rows_data:
-        ax_media.set_title("Distribusi per Tipe Media", fontsize=9.5,
-                           color=TEXT_C, fontweight="bold", pad=6)
-        col_x  = [0.03, 0.52, 0.70, 0.88]
-        headers = ["Tipe Media", "Total", "Neg", "Pos"]
-        for xi, h in zip(col_x, headers):
-            ax_media.text(xi, 0.95, h, transform=ax_media.transAxes,
-                          fontsize=7.5, color=MUTED_C, fontweight="bold")
-        ax_media.plot([0, 1], [0.90, 0.90], transform=ax_media.transAxes,
-                      color=GRID_C, linewidth=0.8, clip_on=False)
-        step = 0.88 / (len(rows_data) + 0.5)
-        for r_i, (mt, tot, neg_c, pos_c) in enumerate(rows_data):
-            y = 0.88 - r_i * step
-            c = MTYPE_COLOR.get(mt, TEXT_C)
-            ax_media.text(col_x[0], y, mt, transform=ax_media.transAxes,
-                          fontsize=7.5, color=c, va="center")
-            ax_media.text(col_x[1], y, str(tot), transform=ax_media.transAxes,
-                          fontsize=7.5, color=TEXT_C, va="center", ha="center")
-            ax_media.text(col_x[2], y, str(neg_c), transform=ax_media.transAxes,
-                          fontsize=7.5, color=NEG_C, va="center", ha="center")
-            ax_media.text(col_x[3], y, str(pos_c), transform=ax_media.transAxes,
-                          fontsize=7.5, color=POS_C, va="center", ha="center")
+    col_x   = [0.03, 0.58, 0.73, 0.88]
+    headers = ["Tipe Media", "Total", "Neg", "Pos"]
+    for xi, h in zip(col_x, headers):
+        ax_tbl.text(xi, 0.96, h, transform=ax_tbl.transAxes,
+                    fontsize=8.5, color=MUTED_C, fontweight="bold", va="top")
+    ax_tbl.plot([0, 1], [0.90, 0.90], transform=ax_tbl.transAxes,
+                color=GRID_C, linewidth=0.8, clip_on=False)
 
-    # ═══════════════════════════════════════════════════
-    # PANEL KANAN — Diverging bar chart
-    # ═══════════════════════════════════════════════════
-    ax_bar = fig.add_subplot(gs[1:, 1], facecolor=CARD_BG)
+    step = 0.82 / max(len(rows_data), 1)
+    for r_i, (mt, tot, neg_c, pos_c) in enumerate(rows_data):
+        y = 0.87 - r_i * step
+        c = MTYPE_COLOR.get(mt, TEXT_C)
+        ax_tbl.text(col_x[0], y, mt,       transform=ax_tbl.transAxes,
+                    fontsize=9, color=c, va="center")
+        ax_tbl.text(col_x[1], y, str(tot), transform=ax_tbl.transAxes,
+                    fontsize=9, color=TEXT_C, va="center", ha="center")
+        ax_tbl.text(col_x[2], y, str(neg_c), transform=ax_tbl.transAxes,
+                    fontsize=9, color=NEG_C, va="center", ha="center")
+        ax_tbl.text(col_x[3], y, str(pos_c), transform=ax_tbl.transAxes,
+                    fontsize=9, color=POS_C, va="center", ha="center")
 
-    labels = []
-    scores = []
-    colors = []
+    # ════════════════════════════════════════════════════
+    # DIVERGING BAR CHART — baris 1, span kedua kolom
+    # Label artikel di DALAM bar → tidak overflow ke panel lain
+    # ════════════════════════════════════════════════════
+    ax_bar = fig.add_subplot(gs[1, :], facecolor=CARD_BG)
 
+    # Susun data: negatif dulu, spacer, lalu positif
+    bar_items = []   # (score_signed, color, title, source, category)
     for a in negatif:
-        t = a["title"]
-        t = t[:62] + "…" if len(t) > 62 else t
-        labels.append(f"  {t}  [{a['source'][:18]}]")
-        scores.append(-a.get("score", 0))
-        colors.append(NEG_C)
-
-    # Spacer antar negatif dan positif
+        t = a["title"][:58] + "…" if len(a["title"]) > 58 else a["title"]
+        bar_items.append((-a.get("score", 0), NEG_C, t, a.get("source", "")[:15], "neg"))
     if negatif and positif:
-        labels.append("")
-        scores.append(0)
-        colors.append(BG)
-
+        bar_items.append((0, BG, "", "", "space"))
     for a in positif:
-        t = a["title"]
-        t = t[:62] + "…" if len(t) > 62 else t
-        labels.append(f"  {t}  [{a['source'][:18]}]")
-        scores.append(a.get("score", 0))
-        colors.append(POS_C)
+        t = a["title"][:58] + "…" if len(a["title"]) > 58 else a["title"]
+        bar_items.append((a.get("score", 0), POS_C, t, a.get("source", "")[:15], "pos"))
 
-    n = len(labels)
+    n     = len(bar_items)
     y_pos = list(range(n))
+    scores_plot = [b[0] for b in bar_items]
+    colors_plot = [b[1] for b in bar_items]
 
-    bars = ax_bar.barh(y_pos, scores, color=colors, height=0.7,
-                       zorder=3, edgecolor="none")
+    bars = ax_bar.barh(y_pos, scores_plot, color=colors_plot,
+                       height=0.72, zorder=3, edgecolor="none")
 
-    # Score label di ujung bar
-    for i, (bar, score, c) in enumerate(zip(bars, scores, colors)):
-        if score == 0:
+    # Label di dalam bar + skor di ujung bar
+    for i, (bar, item) in enumerate(zip(bars, bar_items)):
+        s, c, title, src, cat = item
+        if cat == "space" or not title:
             continue
-        val  = abs(score)
-        xoff = 0.18 if score > 0 else -0.18
-        ha   = "left" if score > 0 else "right"
-        ax_bar.text(bar.get_width() + xoff, i, str(val),
-                    va="center", ha=ha, fontsize=8.5,
-                    color=c, fontweight="bold")
+        score_val = abs(s)
+        # Skor di luar ujung bar
+        tip_x = bar.get_width()
+        ax_bar.text(tip_x + (0.25 if s > 0 else -0.25), i,
+                    str(score_val), va="center",
+                    ha="left" if s > 0 else "right",
+                    fontsize=9.5, color=c, fontweight="bold")
+        # Judul + sumber di dalam bar (anchor di garis tengah x=0)
+        label_x = 0.2  if s > 0 else -0.2
+        ha_lbl  = "left" if s > 0 else "right"
+        ax_bar.text(label_x, i,
+                    f"{title}   [{src}]",
+                    va="center", ha=ha_lbl,
+                    fontsize=7.8, color="white",
+                    clip_on=True)
 
-    # Section label "▼ NEGATIF" dan "▲ POSITIF"
+    # Badge section "NEGATIF" dan "POSITIF"
     if negatif:
         mid_neg = (len(negatif) - 1) / 2
-        ax_bar.text(-10.5, mid_neg, f"▼ NEGATIF\n({n_neg} artikel)",
-                    ha="left", va="center", fontsize=8, color=NEG_C,
-                    fontweight="bold",
-                    bbox=dict(boxstyle="round,pad=0.3", facecolor=BG, alpha=0.7))
+        ax_bar.text(-11.7, mid_neg,
+                    f"▼ NEGATIF  ({n_neg} artikel)",
+                    ha="left", va="center",
+                    fontsize=9, color=NEG_C, fontweight="bold")
     if positif:
-        spacer = 1 if negatif else 0
+        spacer  = 1 if negatif else 0
         mid_pos = len(negatif) + spacer + (len(positif) - 1) / 2
-        ax_bar.text(10.5, mid_pos, f"▲ POSITIF\n({n_pos} artikel)",
-                    ha="right", va="center", fontsize=8, color=POS_C,
-                    fontweight="bold",
-                    bbox=dict(boxstyle="round,pad=0.3", facecolor=BG, alpha=0.7))
+        ax_bar.text(11.7, mid_pos,
+                    f"▲ POSITIF  ({n_pos} artikel)",
+                    ha="right", va="center",
+                    fontsize=9, color=POS_C, fontweight="bold")
 
-    ax_bar.set_yticks(y_pos)
-    ax_bar.set_yticklabels(labels, fontsize=7.8, color=TEXT_C)
-    ax_bar.set_xlim(-12, 12)
+    ax_bar.set_yticks([])          # Tidak ada y-label — judul sudah di dalam bar
+    ax_bar.set_xlim(-12.5, 12.5)
     ax_bar.set_xticks([-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10])
     ax_bar.set_xticklabels(
         ["10", "8", "6", "4", "2", "0", "2", "4", "6", "8", "10"],
-        fontsize=8, color=MUTED_C,
+        fontsize=9, color=MUTED_C,
     )
-    ax_bar.axvline(0, color=MUTED_C, linewidth=1.2, zorder=4)
+    ax_bar.axvline(0, color=MUTED_C, linewidth=1.4, zorder=4)
     ax_bar.grid(axis="x", color=GRID_C, linewidth=0.6, zorder=1)
     ax_bar.spines[:].set_visible(False)
-    ax_bar.tick_params(axis="y", length=0, pad=2)
     ax_bar.tick_params(axis="x", colors=MUTED_C, length=3)
-    ax_bar.set_facecolor(CARD_BG)
-
-    ax_bar.set_title(
-        f"Top Artikel — Skor Sentimen (1–10)",
-        fontsize=10, color=TEXT_C, fontweight="bold", pad=10,
+    ax_bar.set_title("Top Artikel — Skor Sentimen (1–10)",
+                     fontsize=11, color=TEXT_C, fontweight="bold", pad=12)
+    ax_bar.set_xlabel(
+        "◄  Skor Negatif      |      Skor Positif  ►",
+        fontsize=9, color=MUTED_C, labelpad=8,
     )
-    ax_bar.set_xlabel("◄ Skor Negatif          |          Skor Positif ►",
-                      fontsize=8, color=MUTED_C, labelpad=6)
 
     # Footer
     fig.text(
         0.5, 0.025,
-        "Analisis otomatis oleh Claude AI (Anthropic)  ·  Sumber: Talkwalker Alerts · Google Alerts · ListenNotes",
-        ha="center", fontsize=7.5, color=MUTED_C,
+        "Analisis otomatis oleh Claude AI (Anthropic)  ·  "
+        "Sumber: Talkwalker Alerts · Google Alerts · ListenNotes",
+        ha="center", fontsize=8, color=MUTED_C,
     )
 
     plt.savefig(output_path, dpi=150, bbox_inches="tight", facecolor=BG)
