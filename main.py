@@ -1509,10 +1509,16 @@ def save_articles_history(articles, date_str, narrative, docs_dir):
     os.makedirs(docs_dir, exist_ok=True)
     json_path = os.path.join(docs_dir, "articles.json")
 
-    try:
-        run_date = _dt.strptime(date_str, "%d %B %Y").strftime("%Y-%m-%d")
-    except Exception:
-        run_date = _dt.now().strftime("%Y-%m-%d")
+    run_date = None
+    for fmt in ("%d %B %Y %H:%M WIB", "%d %B %Y"):
+        try:
+            run_date = _dt.strptime(date_str.strip(), fmt).strftime("%Y-%m-%d")
+            break
+        except Exception:
+            continue
+    if not run_date:
+        # Fallback: UTC+7
+        run_date = (_dt.utcnow() + _td(hours=7)).strftime("%Y-%m-%d")
 
     history = []
     if os.path.exists(json_path):
@@ -1579,9 +1585,8 @@ def generate_tv_dashboard(articles, date_str, chart_path=None, narrative=None):
     import json as _json
 
     # Gunakan date_str dari main() yang sudah UTC+7, bukan datetime.now() (UTC)
-    now_str = date_str.replace(" WIB", ", ").rstrip(", ") + " WIB" if "WIB" in date_str else date_str
     _now_wib = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
-    run_date = _now_wib.strftime("%Y-%m-%d")
+    now_str = _now_wib.strftime("%d %B %Y, %H:%M WIB")
 
     # Embedded JSON fallback (untuk tampilan pertama sebelum articles.json dimuat)
     embedded = [

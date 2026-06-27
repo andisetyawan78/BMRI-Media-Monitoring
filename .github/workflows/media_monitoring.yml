@@ -86,10 +86,16 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          # Stash file yg dihasilkan main.py agar pull --rebase bisa berjalan
-          git stash push -- docs/index.html docs/articles.json
-          git pull --rebase origin main || git pull --rebase origin master || true
-          git stash pop || true
+          # Simpan file hasil generate ke /tmp agar tidak hilang saat pull
+          cp docs/index.html /tmp/index.html
+          cp docs/articles.json /tmp/articles.json
+          # Reset ke remote (buang perubahan lokal)
+          git fetch origin main
+          git reset --hard origin/main
+          # Kembalikan file hasil generate
+          cp /tmp/index.html docs/index.html
+          cp /tmp/articles.json docs/articles.json
+          # Commit & push
           git add docs/index.html docs/articles.json
           git diff --staged --quiet || git commit -m "chore: update dashboard & data $(date +'%Y-%m-%d %H:%M')"
           git push origin HEAD:main
