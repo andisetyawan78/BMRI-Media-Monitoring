@@ -1705,12 +1705,13 @@ function getCutoff(days){
 
 function render(days){
   const arts=ALL.filter(a=>a.run_date>=getCutoff(days));
-  const neg=arts.filter(a=>a.sentiment==='negatif').sort((a,b)=>b.score-a.score);
-  const pos=arts.filter(a=>a.sentiment==='positif').sort((a,b)=>b.score-a.score);
+  // sort: score DESC, lalu tanggal ASC (kasus lama dgn skor sama muncul lebih dulu)
+  const neg=arts.filter(a=>a.sentiment==='negatif').sort((a,b)=>b.score-a.score||(a.run_date<b.run_date?-1:1));
+  const pos=arts.filter(a=>a.sentiment==='positif').sort((a,b)=>b.score-a.score||(b.run_date<a.run_date?-1:1));
   const tot=arts.length,nN=neg.length,nP=pos.length;
-  const pP=tot?Math.round(nP/tot*100):0,pN=100-pP;
-  const sentColor=pP>=60?'#4ade80':(pP<40?'#f87171':'#fbbf24');
-  const sentLabel=pP>=60?'POSITIF ✅':(pP<40?'NEGATIF ⚠️':'NETRAL ⚡');
+  const pP=tot?Math.round(nP/tot*100):0,pN=tot?Math.round(nN/tot*100):0;
+  const sentColor=pN>pP?'#f87171':(pP>pN?'#4ade80':'#fbbf24');
+  const sentLabel=pN>pP?'NEGATIF ⚠️':(pP>pN?'POSITIF ✅':'NETRAL ⚡');
 
   // filter info
   const dates=[...new Set(arts.map(a=>a.run_date))].sort();
