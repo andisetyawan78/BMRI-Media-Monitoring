@@ -2141,7 +2141,7 @@ def fetch_online_news_articles(existing_seen):
 # 10. MAIN
 # ─────────────────────────────────────────────
 def main():
-    now      = datetime.datetime.now()
+    now      = datetime.datetime.utcnow() + datetime.timedelta(hours=7)  # UTC → WIB
     date_str = now.strftime("%d %B %Y %H:%M WIB")
     print(f"\n{'='*60}")
     print(f"  BANK MANDIRI MEDIA MONITORING — {date_str}")
