@@ -1772,9 +1772,19 @@ function render(days){
     +`<span class="mpos">${sp[s]||'·'}</span></div>`
   ).join('');
 
-  // articles
-  renderArts(neg.slice(0,10),'neg-list','neg-count','#f87171');
-  renderArts(pos.slice(0,10),'pos-list','pos-count','#4ade80');
+  // articles — max 2 artikel per tanggal agar tersebar lintas periode
+  function topArts(sorted, n, maxPerDate){
+    const out=[],cnt={};
+    for(const a of sorted){
+      const d=a.run_date||'';
+      if((cnt[d]||0)<maxPerDate){out.push(a);cnt[d]=(cnt[d]||0)+1;}
+      if(out.length>=n)break;
+    }
+    return out;
+  }
+  const mpd=days<=7?10:2; // periode pendek: bebas; periode panjang: max 2/hari
+  renderArts(topArts(neg,10,mpd),'neg-list','neg-count','#f87171');
+  renderArts(topArts(pos,10,mpd),'pos-list','pos-count','#4ade80');
 
   // narrative — dinamis sesuai periode
   const oldest=dates[0]||'',newest=dates[dates.length-1]||'';
