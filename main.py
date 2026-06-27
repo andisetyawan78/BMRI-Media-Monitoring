@@ -1626,9 +1626,10 @@ def generate_tv_dashboard(articles, date_str, chart_path=None, narrative=None):
     # Tampilkan UTC dan WIB; tanggal menggunakan WIB (bisa berbeda saat UTC 17:xx → WIB 00:xx+1)
     _now_utc = datetime.datetime.utcnow()
     _now_wib = _now_utc + datetime.timedelta(hours=7)
-    now_str = (_now_wib.strftime("%d %B %Y") + ", "
-               + _now_utc.strftime("%H:%M") + " UTC"
-               + " (" + _now_wib.strftime("%H:%M") + " WIB)")
+    now_str  = (_now_wib.strftime("%d %B %Y") + ", "
+                + _now_utc.strftime("%H:%M") + " UTC"
+                + " (" + _now_wib.strftime("%H:%M") + " WIB)")
+    run_date = _now_wib.strftime("%Y-%m-%d")
 
     # Embedded JSON fallback (untuk tampilan pertama sebelum articles.json dimuat)
     embedded = [
