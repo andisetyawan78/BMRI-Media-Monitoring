@@ -1563,6 +1563,13 @@ def save_articles_history(articles, date_str, narrative, docs_dir):
     # Hapus data tanggal yang sama (re-run idempoten)
     history = [a for a in history if a.get("run_date") != run_date]
 
+    # Filter BSM — tidak masuk ke history
+    _BSM_KW = ['bank syariah mandiri', 'mandiri syariah', 'bsm.co.id']
+    def _is_bsm(a):
+        t = (a.get("title","") + " " + a.get("snippet","") + " " + a.get("source","")).lower()
+        return any(k in t for k in _BSM_KW)
+    articles = [a for a in articles if not _is_bsm(a)]
+
     # Tambah artikel hari ini
     for a in articles:
         history.append({
