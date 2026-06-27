@@ -651,16 +651,46 @@ Berikut daftar artikel/berita:
 {articles_text}
 
 Tugasmu:
-1. Tentukan sentimen setiap artikel: "positif" atau "negatif" terhadap citra/kinerja Bank Mandiri.
-2. Berikan skor 1-10 (10 = paling berdampak tinggi dalam kategorinya).
-3. Berikan alasan singkat (maks 15 kata).
-4. Tandai "irrelevant" jika artikel tidak terkait langsung Bank Mandiri BUMN (spam, iklan, dll).
+1. Tentukan sentimen: "positif", "negatif", atau "netral" terhadap citra/kinerja Bank Mandiri.
+2. Tandai "irrelevant" jika tidak terkait langsung Bank Mandiri (spam, iklan, tidak ada hubungan).
+3. Hitung SKOR FINAL 1–10 berdasarkan 4 dimensi berikut:
 
-Output HANYA JSON array ini, tanpa teks lain:
+   A. DAMPAK FINANSIAL (bobot tinggi):
+      - Nilai > Rp100 M              → +9–10
+      - Nilai Rp10 M – Rp100 M      → +7–8
+      - Nilai < Rp10 M               → +5–6
+      - Tidak ada nilai rupiah        → +1–4
+
+   B. DAMPAK REPUTASI (bobot tinggi):
+      - Fraud / korupsi / skandal    → +9–10
+      - Keluhan viral / regulasi     → +6–8
+      - Penghargaan / milestone      → +8–9
+      - Pemberitaan umum             → +3–5
+
+   C. URGENSI & ESKALASI (bobot sedang):
+      - Sudah ditangani hukum / OJK  → +8–10
+      - Sedang berkembang / viral    → +6–8
+      - Isu yang sudah selesai       → +3–5
+      - Berita rutin / informatif    → +1–3
+
+   D. JANGKAUAN MEDIA (bobot sedang):
+      - Multi-platform + viral       → +8–10
+      - Beberapa media nasional      → +6–7
+      - 1–2 media saja               → +3–5
+      - Media lokal / blog           → +1–3
+
+   Skor Final = rata-rata berbobot keempat dimensi, dinormalisasi ke 1–10.
+   Bulatkan ke bilangan bulat. Min 1, maks 10.
+
+4. Berikan alasan singkat (maks 15 kata) menjelaskan skor.
+5. Tentukan topik: "Keuangan", "Kasus Hukum", "Produk & Layanan", "SDM", "CSR", "Pasar Modal", "Regulasi", "Operasional", atau "Lainnya".
+
+Output HANYA JSON array, tanpa teks lain:
 [
-  {{"id": 1, "sentiment": "positif", "score": 9, "reason": "Alasan singkat"}},
-  {{"id": 2, "sentiment": "negatif", "score": 7, "reason": "Alasan singkat"}},
-  {{"id": 3, "sentiment": "irrelevant"}}
+  {{"id": 1, "sentiment": "negatif", "score": 9, "topic": "Kasus Hukum", "reason": "Alasan singkat"}},
+  {{"id": 2, "sentiment": "positif", "score": 8, "topic": "Keuangan", "reason": "Alasan singkat"}},
+  {{"id": 3, "sentiment": "netral",  "score": 3, "topic": "Operasional", "reason": "Alasan singkat"}},
+  {{"id": 4, "sentiment": "irrelevant"}}
 ]"""
 
     try:
@@ -685,9 +715,11 @@ Output HANYA JSON array ini, tanpa teks lain:
             info = score_map.get(i, {})
             if info.get("sentiment") == "irrelevant":
                 continue
-            a["sentiment"] = info.get("sentiment", "netral")
-            a["score"]     = info.get("score", 5)
-            a["reason"]    = info.get("reason", "")
+            a["sentiment"]       = info.get("sentiment", "netral")
+            a["sentiment_label"] = info.get("sentiment", "netral")
+            a["score"]           = max(1, min(10, int(info.get("score", 5))))
+            a["topic"]           = info.get("topic", "Lainnya")
+            a["reason"]          = info.get("reason", "")
             result.append(a)
         return result
 
@@ -1783,8 +1815,8 @@ function render(days){
     return out;
   }
   const mpd=days<=7?10:2; // periode pendek: bebas; periode panjang: max 2/hari
-  renderArts(topArts(neg,10,mpd),'neg-list','neg-count','#f87171');
-  renderArts(topArts(pos,10,mpd),'pos-list','pos-count','#4ade80');
+  renderArts(topArts(neg,15,mpd),'neg-list','neg-count','#f87171');
+  renderArts(topArts(pos,15,mpd),'pos-list','pos-count','#4ade80');
 
   // narrative — dinamis sesuai periode
   const oldest=dates[0]||'',newest=dates[dates.length-1]||'';
