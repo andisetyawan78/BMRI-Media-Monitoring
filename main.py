@@ -1990,99 +1990,239 @@ def send_email(articles, date_str, chart_path, narrative=None):
 # ─────────────────────────────────────────────
 # 9. MAIN
 # ─────────────────────────────────────────────
+
+# ─────────────────────────────────────────────
+# 9. ONLINE NEWS FETCHER (integrated)
+# ─────────────────────────────────────────────
+def fetch_online_news_articles(existing_seen):
+    import urllib.parse as _up, urllib.request as _ur
+    import xml.etree.ElementTree as _ET, time as _t, re as _re
+
+    HDR  = {"User-Agent": "Mozilla/5.0 Chrome/120.0.0.0"}
+    CUT  = (datetime.date.today() - datetime.timedelta(days=2)).strftime("%Y-%m-%d")
+    KWLO = ["bank mandiri", "bmri"]
+
+    PORTALS = [
+        ("Kompas.com",    "https://rss.kompas.com/money/read/xml/indeks/1/"),
+        ("Detik Finance", "https://finance.detik.com/rss"),
+        ("Bisnis.com",    "https://feeds.bisnis.com/bisnis/rss/finansial/keuangan"),
+        ("Kontan",        "https://www.kontan.co.id/rss/news.rss"),
+        ("CNBC Indonesia","https://www.cnbcindonesia.com/rss"),
+        ("Tribun Bisnis", "https://www.tribunnews.com/rss/bisnis"),
+        ("IDX Channel",   "https://www.idxchannel.com/feed"),
+        ("Investor Daily","https://investor.id/feed"),
+        ("Tempo Money",   "https://rss.tempo.co/bisnis"),
+        ("Republika",     "https://rss.republika.co.id/rss/ekonomi/keuangan"),
+    ]
+    GNEWS_KWS = [
+        "Bank Mandiri", "BMRI", "saham BMRI", "laba Bank Mandiri",
+        "dividen BMRI", "Livin Mandiri", "kredit Mandiri",
+        "Bank Mandiri OJK", "Bank Mandiri kasus",
+        "Bank Mandiri tersangka", "Bank Mandiri dilaporkan",
+        "Darmawan Junaidi Bank Mandiri", "RUPS Bank Mandiri",
+    ]
+    BLOG_KWS = [
+        "Bank Mandiri Kaskus", "BMRI forum saham",
+        "Bank Mandiri pengalaman nasabah", "Livin Mandiri masalah",
+    ]
+
+    def _dom(u):
+        try: return _up.urlparse(u).netloc.replace("www.","")
+        except: return ""
+
+    def _date(d):
+        if not d: return None
+        m = _re.search(r"(\d{4}-\d{2}-\d{2})", str(d))
+        return m.group(1) if m else None
+
+    def _art(title, src, url, pub, mtype, snip=""):
+        return {"title":title,"source":src,"url":url,"run_date":pub,
+                "media_type":mtype,"snippet":snip[:200],"summary":"",
+                "sentiment":"netral","sentiment_label":"netral",
+                "score":3,"topic":"Lainnya","reason":""}
+
+    def _rss(url, src_name, mtype="News", kw_filter=True):
+        out = []
+        try:
+            req = _ur.Request(url, headers=HDR)
+            with _ur.urlopen(req, timeout=12) as r:
+                root = _ET.fromstring(r.read())
+            for item in root.findall(".//item"):
+                title = (item.findtext("title") or "").strip()
+                link  = item.findtext("link") or ""
+                desc  = (item.findtext("description") or "")[:300]
+                pub   = _date(item.findtext("pubDate") or "")
+                se    = item.find("source")
+                src   = (se.text.strip() if se is not None and se.text else "") or src_name or _dom(link)
+                if not title or not pub or pub < CUT: continue
+                if kw_filter and not any(k in (title+" "+desc).lower() for k in KWLO): continue
+                key = title[:80].lower()
+                if key not in existing_seen:
+                    existing_seen.add(key)
+                    out.append(_art(title, src, link, pub, mtype, desc))
+        except Exception as e:
+            print(f"    RSS {src_name}: {e}")
+        return out
+
+    results = []
+    print("  [Online] Google News RSS...")
+    for kw in GNEWS_KWS:
+        q = _up.quote(kw)
+        results.extend(_rss(f"https://news.google.com/rss/search?q={q}&hl=id&gl=ID&ceid=ID:id",
+                            "Google News","News",False))
+        _t.sleep(0.5)
+
+    print("  [Online] Portal berita...")
+    for name, url in PORTALS:
+        results.extend(_rss(url, name, "News", True))
+        _t.sleep(0.3)
+
+    print("  [Online] Blog & Forum...")
+    for kw in BLOG_KWS:
+        q = _up.quote(kw)
+        results.extend(_rss(f"https://news.google.com/rss/search?q={q}&hl=id&gl=ID&ceid=ID:id",
+                            "Blog/Forum","Blog",False))
+        _t.sleep(0.5)
+
+    yt_key = os.environ.get("YOUTUBE_API_KEY","")
+    if yt_key:
+        print("  [Online] YouTube...")
+        for kw in ["Bank Mandiri","BMRI saham","Livin Mandiri"]:
+            try:
+                url = (f"https://www.googleapis.com/youtube/v3/search?part=snippet"
+                       f"&q={_up.quote(kw)}&type=video&order=date&maxResults=20"
+                       f"&key={yt_key}&publishedAfter={CUT}T00:00:00Z")
+                with _ur.urlopen(_ur.Request(url,headers=HDR),timeout=12) as r:
+                    data = json.loads(r.read())
+                for item in data.get("items",[]):
+                    sn = item.get("snippet",{})
+                    t2 = sn.get("title","").strip()
+                    vid= item.get("id",{}).get("videoId","")
+                    pub= sn.get("publishedAt","")[:10] or datetime.date.today().strftime("%Y-%m-%d")
+                    key= t2[:80].lower()
+                    if t2 and vid and key not in existing_seen:
+                        existing_seen.add(key)
+                        results.append(_art(t2,sn.get("channelTitle","YouTube"),
+                            f"https://youtube.com/watch?v={vid}",pub,"YouTube",
+                            sn.get("description","")[:200]))
+                _t.sleep(1)
+            except Exception as e:
+                print(f"    YouTube '{kw}': {e}")
+
+    xb = os.environ.get("X_BEARER_TOKEN","")
+    if xb:
+        print("  [Online] Twitter/X...")
+        for kw in ["Bank Mandiri","BMRI"]:
+            try:
+                url = (f"https://api.twitter.com/2/tweets/search/recent"
+                       f"?query={_up.quote(kw+' lang:id -is:retweet')}"
+                       f"&max_results=50&tweet.fields=created_at,author_id"
+                       f"&expansions=author_id&user.fields=name")
+                with _ur.urlopen(_ur.Request(url,headers={"Authorization":f"Bearer {xb}",**HDR}),timeout=12) as r:
+                    data = json.loads(r.read())
+                users = {u["id"]:u.get("name","Twitter") for u in data.get("includes",{}).get("users",[])}
+                for tw in data.get("data",[]):
+                    title = tw.get("text","").replace("\n"," ").strip()
+                    pub   = tw.get("created_at","")[:10] or datetime.date.today().strftime("%Y-%m-%d")
+                    key   = title[:80].lower()
+                    if key not in existing_seen:
+                        existing_seen.add(key)
+                        results.append(_art(title,users.get(tw.get("author_id",""),"Twitter"),
+                            f"https://twitter.com/i/web/status/{tw['id']}",pub,"Twitter",title))
+                _t.sleep(1)
+            except Exception as e:
+                print(f"    Twitter '{kw}': {e}")
+
+    print(f"  [Online] +{len(results)} artikel baru")
+    return results
+
+
+# ─────────────────────────────────────────────
+# 10. MAIN
+# ─────────────────────────────────────────────
 def main():
-    yesterday = (datetime.date.today() - datetime.timedelta(days=1))
-    date_str  = yesterday.strftime("%d %B %Y")
-    print(f"\n{'='*55}")
+    now      = datetime.datetime.now()
+    date_str = now.strftime("%d %B %Y %H:%M WIB")
+    print(f"\n{'='*60}")
     print(f"  BANK MANDIRI MEDIA MONITORING — {date_str}")
-    print(f"{'='*55}\n")
+    print(f"{'='*60}\n")
 
-    print("[1/7] Mengambil email dari Gmail...")
-    service   = get_gmail_service()
-    tw_bodies = fetch_talkwalker_emails(service)
-    ga_bodies = fetch_google_alerts_emails(service)
+    # 1. Gmail
+    print("[1/5] Gmail (Talkwalker + Google Alerts)...")
+    try:
+        service   = get_gmail_service()
+        tw_bodies = fetch_talkwalker_emails(service)
+        ga_bodies = fetch_google_alerts_emails(service)
+    except Exception as e:
+        print(f"  Gmail error: {e}")
+        tw_bodies, ga_bodies = [], []
 
-    print("[2/7] Mencari sebutan di Podcast...")
-    articles_pod = fetch_podcast_mentions()
-
-    if not tw_bodies and not ga_bodies and not articles_pod:
-        print("  ⚠ Tidak ada data dari semua sumber.")
-        send_telegram_text(
-            f"ℹ️ *Media Monitoring Bank Mandiri — {date_str}*\n\n"
-            "Tidak ada data ditemukan untuk periode ini."
-        )
-        return
-
-    print("[3/7] Mem-parsing artikel...")
     articles_tw = parse_articles(tw_bodies) if tw_bodies else []
     articles_ga = parse_google_alerts(ga_bodies) if ga_bodies else []
 
-    all_raw     = articles_tw + articles_ga + articles_pod
+    try:
+        articles_pod = fetch_podcast_mentions()
+    except Exception as e:
+        print(f"  Podcast error: {e}")
+        articles_pod = []
+
+    # 2. Dedup awal
     seen_titles = set()
     articles    = []
-    for a in all_raw:
-        key = a["title"][:60].lower()
+    for a in articles_tw + articles_ga + articles_pod:
+        key = a.get("title","")[:80].lower()
         if key not in seen_titles:
             seen_titles.add(key)
             articles.append(a)
 
-    print(f"[Parser] Total gabungan: {len(articles)} artikel "
-          f"(Talkwalker: {len(articles_tw)}, Google Alerts: {len(articles_ga)}, "
-          f"Podcast: {len(articles_pod)})")
+    # 3. Online news
+    print("[2/5] Online news, RSS, portal, YouTube, Twitter...")
+    try:
+        articles.extend(fetch_online_news_articles(seen_titles))
+    except Exception as e:
+        print(f"  Online news error: {e}")
+
+    n_on = len(articles)-len(articles_tw)-len(articles_ga)-len(articles_pod)
+    print(f"Total: {len(articles)} artikel "
+          f"(TW:{len(articles_tw)} GA:{len(articles_ga)} Pod:{len(articles_pod)} Online:{n_on})")
 
     if not articles:
-        print("  ⚠ Tidak ada artikel relevan ditemukan.")
+        print("Tidak ada artikel.")
         return
 
-    print("[4/7] Menganalisis sentimen dengan Claude AI...")
+    # 4. AI analysis
+    print(f"[3/5] Analisis AI ({len(articles)} artikel)...")
     articles = analyze_sentiment(articles)
 
-    print("[5/7] Membuat narasi eksekutif...")
+    # 5. Narasi & grafik
+    print("[4/5] Narasi & grafik...")
     narrative = generate_narrative_summary(articles, date_str)
-
-    print("[6/7] Membuat grafik sentimen...")
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         chart_path = tmp.name
     generate_chart(articles, chart_path)
 
-    print("[7/7] Mengirim ke Telegram + Email + Dashboard...")
-    send_telegram_text(format_telegram_negative(articles, date_str))
-    send_telegram_text(format_telegram_positive(articles, date_str))
-    send_telegram_photo(
-        chart_path,
-        caption=(
-            f"\U0001f4ca *Grafik Sentimen Bank Mandiri — {date_str}*\n"
-            f"_{len(articles)} berita dianalisis_"
-        )
-    )
-    send_telegram_text(format_summary(articles, date_str))
-
-    # Deploy TV Dashboard ke GitHub Pages (docs/index.html + docs/articles.json)
+    # 6. Dashboard + Email (Telegram: DIMATIKAN)
+    print("[5/5] Dashboard & Email...")
     try:
         docs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs")
         os.makedirs(docs_dir, exist_ok=True)
         save_articles_history(articles, date_str, narrative, docs_dir)
-        dashboard_html = generate_tv_dashboard(
-            articles, date_str, chart_path, narrative=narrative
-        )
-        dashboard_path = os.path.join(docs_dir, "index.html")
-        with open(dashboard_path, "w", encoding="utf-8") as f:
-            f.write(dashboard_html)
-        print(f"  ✅ Dashboard ditulis ke {dashboard_path}")
+        html = generate_tv_dashboard(articles, date_str, chart_path, narrative=narrative)
+        with open(os.path.join(docs_dir, "index.html"), "w", encoding="utf-8") as f:
+            f.write(html)
+        print("  Dashboard diperbarui")
     except Exception as e:
-        print(f"  ⚠ Dashboard error: {e}")
+        print(f"  Dashboard error: {e}")
 
     try:
         send_email(articles, date_str, chart_path, narrative=narrative)
     except Exception as e:
-        print(f"  ⚠ Email error: {e}")
+        print(f"  Email error: {e}")
 
-    try:
-        os.unlink(chart_path)
-    except Exception:
-        pass
+    try: os.unlink(chart_path)
+    except: pass
 
-    print(f"\n✅ Selesai! {len(articles)} artikel dianalisis dan dikirim.")
+    print(f"\nSelesai! {len(articles)} artikel dianalisis.")
 
 
 if __name__ == "__main__":
