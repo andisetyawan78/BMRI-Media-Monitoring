@@ -1690,7 +1690,7 @@ let ALL=EMBEDDED;
 
 async function init(){
   try{const r=await fetch('./articles.json');if(r.ok)ALL=await r.json();}catch(e){}
-  render(1);
+  render(0);
 }
 
 function setFilter(btn,days){
@@ -1704,7 +1704,9 @@ function getCutoff(days){
 }
 
 function render(days){
-  const arts=ALL.filter(a=>a.run_date>=getCutoff(days));
+  const today=new Date().toISOString().split('T')[0];
+  // days=0 → hanya artikel hari ini
+  const arts=days===0?ALL.filter(a=>a.run_date===today):ALL.filter(a=>a.run_date>=getCutoff(days));
   // sort: score DESC, lalu tanggal ASC (kasus lama dgn skor sama muncul lebih dulu)
   const neg=arts.filter(a=>a.sentiment==='negatif').sort((a,b)=>b.score-a.score||(a.run_date<b.run_date?-1:1));
   const pos=arts.filter(a=>a.sentiment==='positif').sort((a,b)=>b.score-a.score||(b.run_date<a.run_date?-1:1));
@@ -1715,8 +1717,9 @@ function render(days){
 
   // filter info
   const dates=[...new Set(arts.map(a=>a.run_date))].sort();
-  const lbls={1:'Kemarin',7:'7 hari',30:'30 hari',90:'3 bulan',180:'6 bulan',365:'1 tahun'};
-  const info=days===1?(dates.length?'Data: '+fd(dates[dates.length-1]):'Tidak ada data')
+  const lbls={0:'Hari ini',1:'Kemarin',7:'7 hari',30:'30 hari',90:'3 bulan',180:'6 bulan',365:'1 tahun'};
+  const info=days===0?(dates.length?'Hari ini · '+arts.length+' artikel':'Belum ada data hari ini')
+    :days===1?(dates.length?'Data: '+fd(dates[dates.length-1]):'Tidak ada data')
     :(lbls[days]||days+' hari')+' terakhir · '+dates.length+' hari data';
   gi('filter-info').textContent=info;
 
@@ -1769,7 +1772,7 @@ function render(days){
 
   // narrative — dinamis sesuai periode
   const oldest=dates[0]||'',newest=dates[dates.length-1]||'';
-  if(days===1&&NAR){
+  if((days===0||days===1)&&NAR){
     gi('nar-day').textContent=fd(RUN_DATE);
     gi('nar-text').innerHTML=NAR;
   }else if(arts.length){
@@ -1851,7 +1854,8 @@ init();
         '</div>\n\n'
         '<div class="filter-bar">\n'
         '  <span class="filter-label">⏱ Periode:</span>\n'
-        '  <button class="filter-btn active" onclick="setFilter(this,1)">Kemarin</button>\n'
+        '  <button class="filter-btn active" onclick="setFilter(this,0)">Hari Ini</button>\n'
+        '  <button class="filter-btn" onclick="setFilter(this,1)">Kemarin</button>\n'
         '  <button class="filter-btn" onclick="setFilter(this,7)">7 Hari</button>\n'
         '  <button class="filter-btn" onclick="setFilter(this,30)">30 Hari</button>\n'
         '  <button class="filter-btn" onclick="setFilter(this,90)">3 Bulan</button>\n'
