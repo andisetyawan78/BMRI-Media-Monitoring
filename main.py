@@ -1791,8 +1791,8 @@ function render(days){
   // sort: score DESC, lalu tanggal ASC (kasus lama dgn skor sama muncul lebih dulu)
   const neg=arts.filter(a=>a.sentiment==='negatif').sort((a,b)=>b.score-a.score||(a.run_date<b.run_date?-1:1));
   const pos=arts.filter(a=>a.sentiment==='positif').sort((a,b)=>b.score-a.score||(b.run_date<a.run_date?-1:1));
-  const tot=arts.length,nN=neg.length,nP=pos.length;
-  const pP=tot?Math.round(nP/tot*100):0,pN=tot?Math.round(nN/tot*100):0;
+  const tot=arts.length,nN=neg.length,nP=pos.length,nNt=tot-nN-nP;
+  const pN=tot?Math.round(nN/tot*100):0,pP=tot?Math.round(nP/tot*100):0,pNt=tot?100-pN-pP:0;
   const sentColor=pN>pP?'#f87171':(pP>pN?'#4ade80':'#fbbf24');
   const sentLabel=pN>pP?'NEGATIF ⚠️':(pP>pN?'POSITIF ✅':'NETRAL ⚡');
 
@@ -1813,11 +1813,11 @@ function render(days){
   gi('s-sources').textContent=srcSet.size.toLocaleString('id');
 
   // donut & legend
-  gi('dpct').textContent=pP+'%';gi('dpct').style.color=sentColor;
-  gi('dlbl').textContent=sentLabel;gi('dlbl').style.color=sentColor;
+  gi('dpct').textContent=tot?pN+'%':'—';
   gi('leg-neg').textContent='Negatif '+nN+' ('+pN+'%)';
   gi('leg-pos').textContent='Positif '+nP+' ('+pP+'%)';
-  drawDonut(pP);
+  gi('leg-net').textContent='Netral '+nNt+' ('+pNt+'%)';
+  drawDonut(pN,pP,pNt);
   if(dates.length){
     const d0=dates[0],d1=dates[dates.length-1];
     gi('oldest-date').textContent=d0===d1?'📅 '+fd(d0):'📅 '+fd(d0)+' – '+fd(d1);
@@ -1902,16 +1902,29 @@ function renderArts(items,listId,countId,color){
   }).join('');
 }
 
-function drawDonut(pctPos){
+function drawDonut(pctNeg,pctPos,pctNet){
   const cv=document.getElementById('donutCanvas');if(!cv)return;
   const ctx=cv.getContext('2d');
-  const cx=60,cy=60,r=54,ir=34,gap=0.05,s0=-Math.PI/2;
-  const pn=(100-pctPos)/100,pp=pctPos/100;
-  function arc(s,en,col){ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,s,en);
-    ctx.arc(cx,cy,ir,en,s,true);ctx.closePath();ctx.fillStyle=col;ctx.fill();}
+  const cx=60,cy=60,r=54,ir=34,gap=0.05,s0=-Math.PI/2,TAU=Math.PI*2;
+  const tot=pctNeg+pctPos+pctNet||1;
+  const segs=[
+    {v:pctNeg/tot,col:'#f87171'},
+    {v:pctPos/tot,col:'#4ade80'},
+    {v:pctNet/tot,col:'#fbbf24'},
+  ].filter(s=>s.v>0.005);
   ctx.fillStyle='#0f172a';ctx.fillRect(0,0,120,120);
-  if(pn>0.01)arc(s0,s0+Math.PI*2*pn-gap,'#f87171');
-  if(pp>0.01)arc(s0+Math.PI*2*pn+gap,s0+Math.PI*2-gap,'#4ade80');
+  if(!segs.length){
+    ctx.beginPath();ctx.arc(cx,cy,54,0,TAU);ctx.arc(cx,cy,34,TAU,0,true);
+    ctx.closePath();ctx.fillStyle='#1e293b';ctx.fill();return;
+  }
+  let cur=s0;
+  for(const seg of segs){
+    const sw=TAU*seg.v;
+    ctx.beginPath();ctx.arc(cx,cy,r,cur+gap/2,cur+sw-gap/2);
+    ctx.arc(cx,cy,ir,cur+sw-gap/2,cur+gap/2,true);
+    ctx.closePath();ctx.fillStyle=seg.col;ctx.fill();
+    cur+=sw;
+  }
 }
 
 function gi(id){return document.getElementById(id);}
@@ -1974,13 +1987,15 @@ init();
         '      <canvas id="donutCanvas" width="120" height="120"></canvas>\n'
         '      <div class="donut-center">'
         '<div class="dpct" id="dpct">—</div>'
-        '<div class="dlbl" id="dlbl">Memuat...</div></div>\n'
+        '<div style="font-size:.55rem;color:#64748b;text-transform:uppercase;letter-spacing:.5px">negatif</div></div>\n'
         '    </div>\n'
         '    <div class="leg">\n'
         '      <div class="leg-r"><div class="ldot" style="background:#f87171"></div>'
         '<span style="color:#f87171" id="leg-neg">Negatif —</span></div>\n'
         '      <div class="leg-r"><div class="ldot" style="background:#4ade80"></div>'
         '<span style="color:#4ade80" id="leg-pos">Positif —</span></div>\n'
+        '      <div class="leg-r"><div class="ldot" style="background:#fbbf24"></div>'
+        '<span style="color:#fbbf24" id="leg-net">Netral —</span></div>\n'
         '    </div>\n'
         '    <div class="oldest-date" id="oldest-date"></div>\n'
         '    <hr class="divider">\n'
