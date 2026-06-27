@@ -1735,7 +1735,7 @@ const TC={"News":"#58A6FF","Blog":"#4ade80","Twitter":"#1D9BF0","Podcast":"#BC8C
 let ALL=EMBEDDED;
 
 async function init(){
-  try{const r=await fetch('./articles.json');if(r.ok)ALL=await r.json();}catch(e){}
+  try{const r=await fetch('./articles.json?v='+Date.now());if(r.ok)ALL=await r.json();}catch(e){}
   render(0);
 }
 
