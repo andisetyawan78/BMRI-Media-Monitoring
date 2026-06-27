@@ -86,15 +86,54 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          # Simpan file hasil generate ke /tmp agar tidak hilang saat pull
-          cp docs/index.html /tmp/index.html
-          cp docs/articles.json /tmp/articles.json
-          # Reset ke remote (buang perubahan lokal)
+
+          # Fetch remote terlebih dulu
           git fetch origin main
+
+          # Merge articles.json: gabungkan hasil run ini dengan history di remote
+          # Ini melindungi data lama meski checkout hanya punya sebagian artikel
+          python3 - <<'PYEOF'
+          import json, subprocess
+          from datetime import datetime, timedelta
+
+          # Load artikel yang baru dihasilkan main.py
+          with open('docs/articles.json', 'r', encoding='utf-8') as f:
+              new_arts = json.load(f)
+
+          # Load artikel dari remote main
+          result = subprocess.run(
+              ['git', 'show', 'origin/main:docs/articles.json'],
+              capture_output=True, encoding='utf-8'
+          )
+          try:
+              old_arts = json.loads(result.stdout)
+          except Exception as e:
+              print(f"  Remote articles.json tidak bisa dibaca: {e}")
+              old_arts = []
+
+          # Merge: new_arts sudah punya hari ini; tambahkan hari lain dari remote
+          new_dates = {a.get('run_date') for a in new_arts}
+          extra = [a for a in old_arts if a.get('run_date') not in new_dates]
+          merged = new_arts + extra
+          merged.sort(key=lambda x: x.get('run_date', ''), reverse=True)
+
+          # Buang artikel > 366 hari
+          cutoff = (datetime.utcnow() - timedelta(days=366)).strftime('%Y-%m-%d')
+          merged = [a for a in merged if a.get('run_date', '') >= cutoff]
+
+          with open('/tmp/articles_merged.json', 'w', encoding='utf-8') as f:
+              json.dump(merged, f, ensure_ascii=False, separators=(',', ':'))
+          print(f"  Merge: {len(new_arts)} baru + {len(extra)} dari remote = {len(merged)} total")
+          PYEOF
+
+          # Simpan index.html
+          cp docs/index.html /tmp/index.html
+
+          # Reset ke remote, lalu restore file hasil merge
           git reset --hard origin/main
-          # Kembalikan file hasil generate
           cp /tmp/index.html docs/index.html
-          cp /tmp/articles.json docs/articles.json
+          cp /tmp/articles_merged.json docs/articles.json
+
           # Commit & push
           git add docs/index.html docs/articles.json
           git diff --staged --quiet || git commit -m "chore: update dashboard & data $(date +'%Y-%m-%d %H:%M')"
