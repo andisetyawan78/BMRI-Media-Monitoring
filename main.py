@@ -1568,9 +1568,41 @@ def save_articles_history(articles, date_str, narrative, docs_dir):
         'bank syariah mandiri', 'mandiri syariah', 'bsm.co.id',  # BSM
         'hanania',  # Travel umrah Hanania — rekening tersangka di BM, bukan kasus BM
     ]
+    # Sumber yang sering membawa false positive via widget sidebar
+    _JUNK_SOURCES = ['bitvonline.com']
+    # Judul yang jelas tidak relevan (pola regex)
+    import re as _re
+    _JUNK_TITLE_PATTERNS = [
+        r'^bus rombongan', r'^pemko\s', r'^run for garbage',
+        r'^\.\.\.',       # judul terpotong
+        r'^@\w+',           # tweet handle saja
+    ]
+    # Keyword minimal relevan: harus ada di judul ATAU 150 char pertama snippet
+    _RELEVANCE_KW = [
+        'bank mandiri', 'bmri', 'mandiri', 'livin', 'kopra', 'darmawan',
+        'kredit', 'perbankan', 'nasabah', 'ojk', 'lps', 'saham', 'laba',
+        'dividen', 'korupsi', 'fraud', 'penipuan', 'penggelapan', 'tersangka',
+        'sidang', 'cek palsu', 'pemalsuan', 'gugatan', 'tipikor', 'investasi',
+        'bank mantap', 'mandiri taspen', 'mandiri sekuritas',
+    ]
+
     def _is_excluded(a):
-        t = (a.get("title","") + " " + a.get("snippet","") + " " + a.get("source","")).lower()
-        return any(k in t for k in _EXCLUDE_KW)
+        text = (a.get("title","") + " " + a.get("snippet","") + " " + a.get("source","")).lower()
+        if any(k in text for k in _EXCLUDE_KW):
+            return True
+        src   = a.get("source","").lower()
+        title = a.get("title","").lower()
+        if any(s in src for s in _JUNK_SOURCES):
+            return True
+        if any(_re.search(p, title) for p in _JUNK_TITLE_PATTERNS):
+            return True
+        # Untuk artikel negatif: judul + awal snippet harus mengandung keyword relevan
+        if a.get("sentiment") == "negatif":
+            combined = title + " " + a.get("snippet","")[:150].lower()
+            if not any(k in combined for k in _RELEVANCE_KW):
+                return True
+        return False
+
     articles = [a for a in articles if not _is_excluded(a)]
 
     # Tambah artikel hari ini
